@@ -14,10 +14,11 @@ const API = import.meta.env.VITE_API_URL || "";
 async function getResponseError(response, fallback) {
   try {
     const data = await response.json();
-    return data.error || fallback;
+    if (data.error) return data.error;
   } catch {
-    return fallback;
+    // Non-JSON responses need their HTTP status to help diagnose routing failures.
   }
+  return `${fallback} (HTTP ${response.status}${response.statusText ? ` ${response.statusText}` : ""})`;
 }
 
 function readSavedTheme() {

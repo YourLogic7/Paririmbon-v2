@@ -1,3 +1,7 @@
-import app from "../apps/api/src/app.js";
+let appPromise;
 
-export default app;
+export default async function handler(request, response) {
+  appPromise ??= import("../apps/api/src/app.js").then(({ default: app }) => app);
+  const app = await appPromise;
+  return app(request, response);
+}

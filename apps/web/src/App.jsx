@@ -11,6 +11,15 @@ const STORAGE_KEY = "paririmbon.entries.v1";
 const THEME_STORAGE_KEY = "paririmbon.theme";
 const API = import.meta.env.VITE_API_URL || "";
 
+async function getResponseError(response, fallback) {
+  try {
+    const data = await response.json();
+    return data.error || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 function readSavedTheme() {
   try {
     return localStorage.getItem(THEME_STORAGE_KEY) === "dark" ? "dark" : "light";
@@ -113,11 +122,6 @@ function App() {
     const now = new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "short", year: "numeric" }).format(new Date());
     const updated = { ...entry, updatedAt: now };
     const isNew = !entries.some((item) => item.id === entry.id);
-    setEntries((current) => isNew ? [updated, ...current] : current.map((item) => item.id === entry.id ? updated : item));
-    setActiveId(updated.id);
-    setEditing(undefined);
-    setAssistOpen(false);
-    setToast(isNew ? "Halaman baru berhasil ditambahkan" : "Perubahan halaman berhasil disimpan");
     if (token) {
       try {
         const response = await fetch(`${API}/api/entries${isNew ? "" : `/${encodeURIComponent(entry.id)}`}`, {
@@ -125,27 +129,44 @@ function App() {
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
           body: JSON.stringify(updated)
         });
-        if (!response.ok) setToast("Tersimpan di perangkat ini, tetapi server menolak perubahan");
+        if (!response.ok) {
+          setToast(`Gagal menyimpan ke server: ${await getResponseError(response, "server menolak perubahan")}`);
+          return;
+        }
       } catch {
-        setToast("Tersimpan di perangkat ini; sinkronisasi server gagal");
+        setToast("Gagal menyimpan ke server; perubahan belum diterapkan. Periksa koneksi lalu coba lagi.");
+        return;
       }
     }
+    setEntries((current) => isNew ? [updated, ...current] : current.map((item) => item.id === entry.id ? updated : item));
+    setActiveId(updated.id);
+    setEditing(undefined);
+    setAssistOpen(false);
+    setToast(token
+      ? (isNew ? "Halaman baru berhasil disimpan ke server" : "Perubahan berhasil disimpan ke server")
+      : "Tersimpan di perangkat ini saja; masuk ke server untuk menyinkronkan perubahan");
   }
 
   async function deleteEntry(entry) {
     if (!window.confirm(`Hapus halaman “${entry.title}”?`)) return;
-    setEntries((current) => current.filter((item) => item.id !== entry.id));
-    setToast("Halaman telah dihapus");
     if (token) {
       try {
         const response = await fetch(`${API}/api/entries/${encodeURIComponent(entry.id)}`, {
           method: "DELETE", headers: { Authorization: `Bearer ${token}` }
         });
-        if (!response.ok) setToast("Gagal menghapus di server; salinan lokal telah diperbarui");
+        if (!response.ok) {
+          setToast(`Gagal menghapus di server: ${await getResponseError(response, "server menolak perubahan")}`);
+          return;
+        }
       } catch {
-        setToast("Dihapus di perangkat ini; server tidak terjangkau");
+        setToast("Gagal menghapus di server; perubahan belum diterapkan. Periksa koneksi lalu coba lagi.");
+        return;
       }
     }
+    setEntries((current) => current.filter((item) => item.id !== entry.id));
+    setToast(token
+      ? "Halaman berhasil dihapus dari server"
+      : "Dihapus di perangkat ini saja; masuk ke server untuk menyinkronkan perubahan");
   }
 
   function movePage(direction) {
@@ -293,7 +314,7 @@ function App() {
         {import.meta.env.DEV && <span className="demo-hint">Mode demo lokal: gunakan <code>admin123</code></span>}
       </form></div>}
 
-      {editing !== undefined && <EntryEditor entry={editing} onClose={() => setEditing(undefined)} onSave={saveEntry} />}
+      {editing !== undefined && <EntryEditor entry={editing} onClose={() => setEditing(undefined)} onSave={saveEntry} localOnly={!token} />}
       {toast && <div className="toast"><Check size={16} /> {toast}</div>}
     </div>
   );
@@ -327,7 +348,7 @@ function AssistPanel({ caseType, setCaseType, conditions, toggleCondition, recom
   );
 }
 
-function EntryEditor({ entry, onClose, onSave }) {
+function EntryEditor({ entry, onClose, onSave, localOnly }) {
   const [title, setTitle] = useState(entry?.title || "");
   const [category, setCategory] = useState(entry?.category || "Panduan umum");
   const [summary, setSummary] = useState(entry?.summary || "");
@@ -347,7 +368,7 @@ function EntryEditor({ entry, onClose, onSave }) {
     <div className="editor-two-col"><div><label className="field-label" htmlFor="entry-category">Kategori</label><input id="entry-category" className="text-input" value={category} onChange={(event) => setCategory(event.target.value)} placeholder="Misalnya: Pembayaran" required /></div><div><label className="field-label" htmlFor="entry-tags">Kata kunci <span>(pisahkan dengan koma)</span></label><input id="entry-tags" className="text-input" value={tags} onChange={(event) => setTags(event.target.value)} placeholder="akun, akses, login" /></div></div>
     <label className="field-label" htmlFor="entry-summary">Ringkasan singkat</label><textarea id="entry-summary" className="text-input summary-input" value={summary} onChange={(event) => setSummary(event.target.value)} placeholder="Satu kalimat tentang isi halaman ini." required maxLength={220} />
     <label className="field-label" htmlFor="entry-content">Isi panduan</label><textarea id="entry-content" className="text-input content-input" value={content} onChange={(event) => setContent(event.target.value)} placeholder={"Tuliskan panduan di sini.\n\nPisahkan paragraf dengan baris kosong."} required />
-    <div className="editor-footer"><span><ShieldCheck size={14} /> Perubahan langsung tersimpan di buku.</span><button className="primary-action" type="submit"><Check size={16} /> {isNew ? "Terbitkan halaman" : "Simpan perubahan"}</button></div>
+    <div className="editor-footer"><span><ShieldCheck size={14} /> {localOnly ? "Hanya tersimpan di perangkat ini." : "Disimpan ke server saat dikonfirmasi."}</span><button className="primary-action" type="submit"><Check size={16} /> {isNew ? "Terbitkan halaman" : "Simpan perubahan"}</button></div>
   </form></div>;
 }
 

@@ -2,13 +2,22 @@ import { useEffect, useMemo, useState } from "react";
 import {
   ArrowDownRight, ArrowRight, BookOpen, BookPlus, Check,
   ChevronDown, ChevronLeft, ChevronRight, CircleHelp, Clock3, Feather,
-  FileText, Lightbulb, LockKeyhole, LogIn, LogOut, Pencil, Plus,
-  Search, ShieldCheck, Sparkles, Trash2, X
+  FileText, Lightbulb, LockKeyhole, LogIn, LogOut, Moon, Pencil, Plus,
+  Search, ShieldCheck, Sparkles, Sun, Trash2, X
 } from "lucide-react";
 import { caseTypes, conditionGroups, getRecommendations, initialEntries } from "./data.js";
 
 const STORAGE_KEY = "paririmbon.entries.v1";
+const THEME_STORAGE_KEY = "paririmbon.theme";
 const API = import.meta.env.VITE_API_URL || "";
+
+function readSavedTheme() {
+  try {
+    return localStorage.getItem(THEME_STORAGE_KEY) === "dark" ? "dark" : "light";
+  } catch {
+    return "light";
+  }
+}
 
 function readSavedEntries() {
   try {
@@ -20,6 +29,7 @@ function readSavedEntries() {
 }
 
 function App() {
+  const [theme, setTheme] = useState(readSavedTheme);
   const [entries, setEntries] = useState(readSavedEntries);
   const [activeId, setActiveId] = useState(entries[0]?.id);
   const [search, setSearch] = useState("");
@@ -35,6 +45,10 @@ function App() {
   const [caseType, setCaseType] = useState(caseTypes[0]);
   const [conditions, setConditions] = useState([]);
   const [recommendation, setRecommendation] = useState(null);
+
+  useEffect(() => {
+    localStorage.setItem(THEME_STORAGE_KEY, theme);
+  }, [theme]);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
@@ -159,7 +173,7 @@ function App() {
   }
 
   return (
-    <div className="app-shell">
+    <div className="app-shell" data-theme={theme}>
       <header className="topbar">
         <a className="brand" href="#" onClick={(event) => { event.preventDefault(); setAssistOpen(false); }}>
           <span className="brand-mark"><BookOpen size={19} strokeWidth={1.8} /></span>
@@ -167,6 +181,10 @@ function App() {
         </a>
         <div className="topbar-center"><span className="live-dot" /> Ruang belajar produk <span className="topbar-divider">/</span> <span className="topbar-muted">Edisi 01</span></div>
         <div className="topbar-actions">
+          <div className="theme-toggle" role="group" aria-label="Theme">
+            <button type="button" className={theme === "light" ? "selected" : ""} aria-pressed={theme === "light"} onClick={() => setTheme("light")}><Sun size={13} /><span>Light</span></button>
+            <button type="button" className={theme === "dark" ? "selected" : ""} aria-pressed={theme === "dark"} onClick={() => setTheme("dark")}><Moon size={13} /><span>Dark</span></button>
+          </div>
           <button className={`assist-nav ${assistOpen ? "selected" : ""}`} onClick={() => { setAssistOpen((value) => !value); setRecommendation(null); }}>
             <Sparkles size={15} /> AI Assist
           </button>

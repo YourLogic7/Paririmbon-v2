@@ -1,6 +1,7 @@
 import express from "express";
 import { createToken, requireAdmin } from "./auth.js";
 import { connectDatabase, Entry } from "./db.js";
+import { initialEntries } from "../../web/src/data.js";
 
 const app = express();
 app.use(express.json({ limit: "64kb" }));
@@ -37,6 +38,13 @@ app.post("/api/auth/login", (request, response) => {
 app.get("/api/entries", async (_request, response, next) => {
   try {
     await connectDatabase();
+    if (await Entry.estimatedDocumentCount() === 0) {
+      try {
+        await Entry.insertMany(initialEntries);
+      } catch (error) {
+        if (error.code !== 11000) throw error;
+      }
+    }
     const entries = await Entry.find().sort({ createdAt: 1 }).select("-_id -__v").lean();
     return response.json({ entries });
   } catch (error) {
@@ -63,8 +71,11 @@ app.put("/api/entries/:id", requireAdmin, async (request, response, next) => {
   if (request.params.id !== request.body.id) return response.status(400).json({ error: "ID halaman tidak cocok." });
   try {
     await connectDatabase();
-    const entry = await Entry.findOneAndUpdate({ id: request.params.id }, request.body, { new: true, runValidators: true }).select("-_id -__v").lean();
-    if (!entry) return response.status(404).json({ error: "Halaman tidak ditemukan." });
+    const entry = await Entry.findOneAndUpdate(
+      { id: request.params.id },
+      request.body,
+      { new: true, runValidators: true, upsert: true, setDefaultsOnInsert: true }
+    ).select("-_id -__v").lean();
     return response.json({ entry });
   } catch (error) {
     return next(error);

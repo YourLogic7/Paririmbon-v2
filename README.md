@@ -20,7 +20,7 @@ Vite berjalan di `http://localhost:5173`, API di `http://localhost:3001`. Salin 
 
 ## Deploy ke Vercel
 
-Impor repository ke Vercel dari direktori root monorepo, lalu tambahkan environment variables `MONGODB_URI`, `ADMIN_PASSWORD`, dan `JWT_SECRET` di project settings untuk setiap environment yang digunakan. Vercel menggunakan `vercel.json` untuk membangun `apps/web/dist` dan menyajikan API dari direktori root `api/`. Pastikan MongoDB Atlas mengizinkan koneksi dari deployment Vercel. Setelah menambahkan environment variables, redeploy project.
+Impor repository ke Vercel dari direktori root monorepo, lalu tambahkan environment variables `MONGODB_URI`, `ADMIN_PASSWORD`, dan `JWT_SECRET` di project settings untuk setiap environment yang digunakan. Vercel menggunakan `vercel.json` untuk membangun `apps/web/dist` dan menyajikan API dari direktori root `api/`. Saat pertama kali API membaca database kosong, halaman contoh akan disalin ke MongoDB; perubahan dari halaman lokal yang belum tersimpan juga akan dibuat di server saat disunting. Pastikan MongoDB Atlas mengizinkan koneksi dari deployment Vercel. Setelah menambahkan environment variables, redeploy project.
 
 ## Pemeriksaan
 

@@ -23,7 +23,7 @@ function App() {
   const [entries, setEntries] = useState(readSavedEntries);
   const [activeId, setActiveId] = useState(entries[0]?.id);
   const [search, setSearch] = useState("");
-  const [bookOpen, setBookOpen] = useState(true);
+  const [bookOpen, setBookOpen] = useState(false);
   const [assistOpen, setAssistOpen] = useState(false);
   const [admin, setAdmin] = useState(false);
   const [token, setToken] = useState("");

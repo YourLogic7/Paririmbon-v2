@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import {
   ArrowDownRight, ArrowRight, BookOpen, BookPlus, Check,
   ChevronDown, ChevronLeft, ChevronRight, CircleHelp, Clock3, Feather,
@@ -72,6 +72,94 @@ function isHttpLink(value) {
   } catch {
     return false;
   }
+}
+
+function SearchableSelect({ id, value, options, onChange, placeholder, required = false, compact = false }) {
+  const listId = useId();
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [activeIndex, setActiveIndex] = useState(-1);
+  const filteredOptions = useMemo(() => {
+    const normalizedQuery = query.trim().toLocaleLowerCase();
+    return options.filter((option) => option.toLocaleLowerCase().includes(normalizedQuery));
+  }, [options, query]);
+
+  function choose(option) {
+    onChange(option);
+    setQuery("");
+    setOpen(false);
+    setActiveIndex(-1);
+  }
+
+  function handleKeyDown(event) {
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setOpen(true);
+      setActiveIndex((current) => Math.min(current + 1, filteredOptions.length - 1));
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setOpen(true);
+      setActiveIndex((current) => current <= 0 ? filteredOptions.length - 1 : current - 1);
+    } else if (event.key === "Enter" && open) {
+      event.preventDefault();
+      if (filteredOptions[activeIndex]) choose(filteredOptions[activeIndex]);
+      else if (filteredOptions.length === 1) choose(filteredOptions[0]);
+    } else if (event.key === "Escape") {
+      setOpen(false);
+      setQuery("");
+      setActiveIndex(-1);
+    }
+  }
+
+  return (
+    <div className={`searchable-select${compact ? " compact" : ""}`}>
+      <div className="searchable-select-control">
+        <input
+          id={id}
+          type="text"
+          role="combobox"
+          aria-autocomplete="list"
+          aria-expanded={open}
+          aria-controls={listId}
+          aria-activedescendant={open && activeIndex >= 0 ? `${listId}-option-${activeIndex}` : undefined}
+          autoComplete="off"
+          required={required}
+          value={open ? query : value}
+          placeholder={placeholder}
+          onFocus={() => { setOpen(true); setQuery(""); setActiveIndex(-1); }}
+          onClick={() => {
+            if (!open) {
+              setOpen(true);
+              setQuery("");
+              setActiveIndex(-1);
+            }
+          }}
+          onChange={(event) => { setQuery(event.target.value); setActiveIndex(-1); setOpen(true); }}
+          onKeyDown={handleKeyDown}
+          onBlur={() => { setOpen(false); setQuery(""); setActiveIndex(-1); }}
+        />
+        <ChevronDown size={compact ? 14 : 16} aria-hidden="true" />
+      </div>
+      {open && (
+        <div className="searchable-select-options" id={listId} role="listbox">
+          {filteredOptions.length ? filteredOptions.map((option, index) => (
+            <button
+              id={`${listId}-option-${index}`}
+              className={`searchable-select-option${index === activeIndex ? " active" : ""}`}
+              type="button"
+              role="option"
+              aria-selected={option === value}
+              key={option}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => choose(option)}
+            >
+              {option}
+            </button>
+          )) : <span className="searchable-select-empty">Tidak ada pilihan yang cocok.</span>}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function readSavedBadTicketConfig() {
@@ -422,12 +510,14 @@ function BadTicketPanel({ config, submission, onEdit, result, onSubmit }) {
         {dropdowns.map(({ field, label, options }) => (
           <div className="bad-ticket-field" key={field}>
             <label className="field-label" htmlFor={`ticket-${field}`}>{label} <span className="required-mark">*</span></label>
-            <div className="select-wrap">
-              <select id={`ticket-${field}`} value={submission[field]} onChange={(event) => onEdit(field, event.target.value)} required>
-                <option value="">Pilih {label.toLowerCase()}</option>
-                {options.map((item) => <option key={item} value={item}>{item}</option>)}
-              </select><ChevronDown size={16} />
-            </div>
+            <SearchableSelect
+              id={`ticket-${field}`}
+              value={submission[field]}
+              options={options}
+              onChange={(value) => onEdit(field, value)}
+              placeholder={`Pilih atau ketik ${label.toLowerCase()}`}
+              required
+            />
           </div>
         ))}
         <div className="ticket-ids">
@@ -559,7 +649,7 @@ function BadTicketAdminPanel({ config, onSave, onBack, localOnly }) {
             { field: "customerCase", label: "Case", options: draft.customerCases },
             { field: "issueType", label: "Jenis", options: draft.issueTypes },
             { field: "onuStatus", label: "ONU", options: draft.onuStatuses }
-          ].map(({ field, label, options }) => <label className="bad-ticket-rule-field" key={field}><span>{label}</span><select className="text-input" value={rule[field]} onChange={(event) => updateRule(index, field, event.target.value)} required>{rule[field] && !options.includes(rule[field]) && <option value={rule[field]} disabled>{rule[field]} (tidak tersedia)</option>}{options.map((option) => <option key={option} value={option}>{option}</option>)}</select></label>)}
+          ].map(({ field, label, options }) => <div className="bad-ticket-rule-field" key={field}><span>{label}</span><SearchableSelect compact value={rule[field]} options={options} onChange={(value) => updateRule(index, field, value)} placeholder={`Pilih ${label.toLowerCase()}`} required /></div>)}
           <label className="bad-ticket-rule-field recommendation-field"><span>Redaksi rekomendasi bad tiket <small>(opsional)</small></span><textarea className="text-input" value={rule.recommendation || ""} maxLength={2000} rows={3} onChange={(event) => updateRule(index, "recommendation", event.target.value)} placeholder="Contoh: Permasalahan internet lambat seharusnya dibuat di KIP K31 - Bisa Browsing - Lambat." /></label>
           <label className="bad-ticket-rule-field recommendation-field"><span>Source link KMS</span><input className="text-input" type="url" value={rule.sourceLink || ""} onChange={(event) => updateRule(index, "sourceLink", event.target.value)} placeholder="https://kms.telkomsel.co.id/content/" required /></label>
           <label className="bad-ticket-rule-field recommendation-field"><span>Hashtag bad tiket</span><select className="text-input" value={rule.hashtag || "#salah_kategori"} onChange={(event) => updateRule(index, "hashtag", event.target.value)} required>{BAD_TICKET_HASHTAGS.map((hashtag) => <option key={hashtag} value={hashtag}>{hashtag}</option>)}</select></label>

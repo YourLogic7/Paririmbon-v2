@@ -486,6 +486,23 @@ function BadTicketAdminPanel({ config, onSave, onBack, localOnly }) {
         [...new Set(draft[field].map((value) => value.trim()).filter(Boolean))]
       ]))
     };
+    const ruleFields = {
+      kips: "kip",
+      customerCases: "customerCase",
+      issueTypes: "issueType",
+      onuStatuses: "onuStatus"
+    };
+    normalized.rules = normalized.rules.map((rule) => {
+      const updatedRule = { ...rule };
+      optionFields.forEach(({ field }) => {
+        const removed = config[field].filter((value) => !normalized[field].includes(value));
+        const added = normalized[field].filter((value) => !config[field].includes(value));
+        if (removed.length === 1 && added.length === 1 && updatedRule[ruleFields[field]] === removed[0]) {
+          updatedRule[ruleFields[field]] = added[0];
+        }
+      });
+      return updatedRule;
+    });
     const invalidOption = optionFields.find(({ field }) => normalized[field].length === 0);
     const ruleIssues = normalized.rules.flatMap((rule, index) => {
       const fields = [

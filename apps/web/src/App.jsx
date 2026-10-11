@@ -325,6 +325,20 @@ function App() {
   function evaluateTicket(event) {
     event.preventDefault();
     const evaluation = evaluateBadTicket(ticketSubmission, badTicketConfig);
+    if (evaluation.expectedRule?.special) {
+      const label = [
+        `ID Case : ${ticketSubmission.caseId || "1-XXXXX"} / ${ticketSubmission.incident || "INCXXXXX"} No IH : ${ticketSubmission.ihNumber || "1XXXXXXX"}`,
+        "Di detail pelaporan (copy dari DSC)",
+        "",
+        evaluation.expectedRule.recommendation,
+        "",
+        "#badtiketC4",
+        evaluation.expectedRule.hashtag,
+        evaluation.expectedRule.sourceLink
+      ].join("\n");
+      setTicketResult({ ...evaluation, label });
+      return;
+    }
     const expectedKip = evaluation.expectedRule?.kip;
     const expectedText = expectedKip
       ? `Seharusnya dibuat di KIP: ${expectedKip}\n${evaluation.expectedRule.recommendation || "Gunakan KIP ini untuk kendala dan kondisi tersebut."}`

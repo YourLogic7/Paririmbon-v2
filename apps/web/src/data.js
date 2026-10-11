@@ -71,6 +71,14 @@ export const conditionGroups = [
   }
 ];
 
+export const detailedCaseCustomerCase = "Detail Case Pelanggan di Cantumkan Banyak kendala (borongan)";
+
+export const detailedCaseBadTicketRule = {
+  recommendation: "Seharusnya bisa sesuaikan detail case-nya dengan jelas agar selaras dengan pengecekan tools kendala dan KIP yang akan dicantumkan. Pastikan dijelaskan apakah di lokasi tidak bisa koneksi, lambat, atau intermitten, sehingga bisa dibuatkan dengan KIP yang sesuai (TBC dan Lambat berbeda kategori).",
+  sourceLink: "https://kms.telkomsel.co.id/content/",
+  hashtag: "#mandatori_tidak_lengkap"
+};
+
 export const initialBadTicketConfig = {
   kips: [
     "K31 - Tidak Bisa Browsing - 1P / 3P Mati Total",
@@ -79,7 +87,8 @@ export const initialBadTicketConfig = {
   customerCases: [
     "Internet tidak bisa koneksi",
     "Internet tidak bisa browsing",
-    "Internet lambat"
+    "Internet lambat",
+    detailedCaseCustomerCase
   ],
   issueTypes: ["Fisik", "Logik"],
   onuStatuses: ["LOS", "ONLINE", "ONT POWER OFF/DYING GASP", "OFFLINE"],
@@ -97,6 +106,13 @@ export const initialBadTicketConfig = {
 };
 
 export function evaluateBadTicket(submission, config) {
+  if (submission.customerCase === detailedCaseCustomerCase) {
+    return {
+      isBadTicket: true,
+      expectedRule: { ...detailedCaseBadTicketRule, special: true }
+    };
+  }
+
   const matchesRule = (rule, fields) =>
     fields.every((field) => rule[field] === submission[field]);
   const exactRule = config.rules.find((rule) =>

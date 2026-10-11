@@ -1,7 +1,11 @@
 import express from "express";
 import { createToken, requireAdmin } from "./auth.js";
 import { connectDatabase, Entry, BadTicketConfig } from "./db.js";
-import { initialBadTicketConfig, initialEntries } from "../../web/src/data.js";
+import {
+  detailedCaseCustomerCase,
+  initialBadTicketConfig,
+  initialEntries
+} from "../../web/src/data.js";
 
 const BAD_TICKET_HASHTAGS = [
   "#salah_kategori",
@@ -119,6 +123,7 @@ app.get("/api/bad-ticket-config", async (_request, response, next) => {
       config: {
         ...initialBadTicketConfig,
         ...storedConfig,
+        customerCases: [...new Set([...(storedConfig.customerCases || []), detailedCaseCustomerCase])],
         rules: storedRules.map((rule) => ({
           ...rule,
           recommendation: rule.recommendation || "",
@@ -139,7 +144,11 @@ app.put("/api/bad-ticket-config", requireAdmin, async (request, response, next) 
     await connectDatabase();
     const config = await BadTicketConfig.findOneAndUpdate(
       { key: "default" },
-      { ...request.body, key: "default" },
+      {
+        ...request.body,
+        customerCases: [...new Set([...request.body.customerCases, detailedCaseCustomerCase])],
+        key: "default"
+      },
       { new: true, runValidators: true, upsert: true, setDefaultsOnInsert: true }
     ).select("-_id -__v -key").lean();
     await BadTicketConfig.collection.updateOne({ key: "default" }, { $unset: { sourceLink: "" } });

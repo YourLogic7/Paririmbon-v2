@@ -562,6 +562,7 @@ function BadTicketPanel({ config, submission, onEdit, result, onSubmit }) {
 
 function BadTicketAdminPanel({ config, onSave, onBack, localOnly }) {
   const [draft, setDraft] = useState(config);
+  const [editingRuleIndex, setEditingRuleIndex] = useState(null);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const optionFields = [
@@ -578,6 +579,29 @@ function BadTicketAdminPanel({ config, onSave, onBack, localOnly }) {
       ...current,
       rules: current.rules.map((rule, ruleIndex) => ruleIndex === index ? { ...rule, [field]: value } : rule)
     }));
+  }
+
+  function addRule() {
+    const newRule = {
+      kip: draft.kips[0] || "",
+      customerCase: draft.customerCases[0] || "",
+      issueType: draft.issueTypes[0] || "",
+      onuStatus: draft.onuStatuses[0] || "",
+      recommendation: "",
+      sourceLink: "",
+      hashtag: "#salah_kategori"
+    };
+    setDraft((current) => ({ ...current, rules: [...current.rules, newRule] }));
+    setEditingRuleIndex(draft.rules.length);
+  }
+
+  function deleteRule(index) {
+    setDraft((current) => ({
+      ...current,
+      rules: current.rules.filter((_, ruleIndex) => ruleIndex !== index)
+    }));
+    if (editingRuleIndex === index) setEditingRuleIndex(null);
+    else if (editingRuleIndex !== null && index < editingRuleIndex) setEditingRuleIndex(editingRuleIndex - 1);
   }
 
   async function submit(event) {
@@ -654,24 +678,40 @@ function BadTicketAdminPanel({ config, onSave, onBack, localOnly }) {
       <div className="bad-ticket-option-grid">
         {optionFields.map(({ field, label }) => <label className="bad-ticket-option" key={field}><span className="field-label">{label}<small>Pisahkan pilihan dengan baris baru</small></span><textarea className="text-input" value={draft[field].join("\n")} onChange={(event) => setDraft((current) => ({ ...current, [field]: event.target.value.split("\n") }))} rows={5} /></label>)}
       </div>
-      <div className="bad-ticket-rules-head"><div><span className="section-kicker">KOMBINASI YANG DISETUJUI</span><h3>Aturan validasi <span>({draft.rules.length})</span></h3></div><button type="button" className="add-button" onClick={() => setDraft((current) => ({ ...current,       rules: [...current.rules, { kip: current.kips[0] || "", customerCase: current.customerCases[0] || "", issueType: current.issueTypes[0] || "", onuStatus: current.onuStatuses[0] || "", recommendation: "", sourceLink: "", hashtag: "#salah_kategori" }] }))}><Plus size={15} /> Tambah aturan</button></div>
+      <div className="bad-ticket-rules-head"><div><span className="section-kicker">KOMBINASI YANG DISETUJUI</span><h3>Aturan validasi <span>({draft.rules.length})</span></h3></div><button type="button" className="add-button" onClick={addRule}><Plus size={15} /> Tambah aturan</button></div>
       {!draft.rules.length && <p className="bad-ticket-no-rules">Belum ada kombinasi yang disetujui. Semua tiket yang diperiksa akan dianggap bad tiket.</p>}
       <div className="bad-ticket-rules">
-        {draft.rules.map((rule, index) => <div className="bad-ticket-rule" key={`rule-${index}`}>
-          {[
-            { field: "kip", label: "KIP", options: draft.kips },
-            { field: "customerCase", label: "Case", options: draft.customerCases },
-            { field: "issueType", label: "Jenis", options: draft.issueTypes },
-            { field: "onuStatus", label: "ONU", options: draft.onuStatuses }
-          ].map(({ field, label, options }) => <div className="bad-ticket-rule-field" key={field}><span>{label}</span><SearchableSelect compact value={rule[field]} options={options} onChange={(value) => updateRule(index, field, value)} placeholder={`Pilih ${label.toLowerCase()}`} required /></div>)}
-          <label className="bad-ticket-rule-field recommendation-field"><span>Redaksi rekomendasi bad tiket <small>(opsional)</small></span><textarea className="text-input" value={rule.recommendation || ""} maxLength={2000} rows={3} onChange={(event) => updateRule(index, "recommendation", event.target.value)} placeholder="Contoh: Permasalahan internet lambat seharusnya dibuat di KIP K31 - Bisa Browsing - Lambat." /></label>
-          <label className="bad-ticket-rule-field recommendation-field"><span>Source link KMS</span><input className="text-input" type="url" value={rule.sourceLink || ""} onChange={(event) => updateRule(index, "sourceLink", event.target.value)} placeholder="https://kms.telkomsel.co.id/content/" required /></label>
-          <label className="bad-ticket-rule-field recommendation-field"><span>Hashtag bad tiket</span><select className="text-input" value={rule.hashtag || "#salah_kategori"} onChange={(event) => updateRule(index, "hashtag", event.target.value)} required>{BAD_TICKET_HASHTAGS.map((hashtag) => <option key={hashtag} value={hashtag}>{hashtag}</option>)}</select></label>
-          <button type="button" className="delete-action" onClick={() => setDraft((current) => ({ ...current, rules: current.rules.filter((_, ruleIndex) => ruleIndex !== index) }))}><Trash2 size={14} /><span>Hapus aturan</span></button>
+        {draft.rules.map((rule, index) => <div className="bad-ticket-rule-summary" key={`rule-${index}`}>
+          <div className="bad-ticket-rule-summary-copy">
+            <strong>{rule.customerCase || "Case belum dipilih"}</strong>
+            <span>{[rule.kip, rule.issueType, rule.onuStatus].filter(Boolean).join(" · ") || "Kombinasi belum lengkap"}</span>
+            <small>{rule.hashtag || "#salah_kategori"}{rule.recommendation ? ` · ${rule.recommendation}` : ""}</small>
+          </div>
+          <div className="bad-ticket-rule-summary-actions">
+            <button type="button" className="rule-edit-button" onClick={() => setEditingRuleIndex(index)}><Pencil size={13} /> Edit</button>
+            <button type="button" className="rule-delete-button" aria-label={`Hapus aturan ${index + 1}`} onClick={() => deleteRule(index)}><Trash2 size={13} /></button>
+          </div>
         </div>)}
       </div>
       {error && <div className="form-error bad-ticket-error">{error}</div>}
       <div className="bad-ticket-admin-footer"><span><ShieldCheck size={14} /> {localOnly ? "Mode demo: konfigurasi hanya tersimpan di perangkat ini." : "Konfigurasi akan disimpan ke MongoDB dan dibagikan ke pegawai."}</span><button className="primary-action" type="submit" disabled={saving}><Check size={16} /> {saving ? "Menyimpan..." : "Simpan konfigurasi"}</button></div>
+      {editingRuleIndex !== null && draft.rules[editingRuleIndex] && <div className="modal-backdrop rule-editor-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setEditingRuleIndex(null); }}>
+        <section className="rule-editor-modal" role="dialog" aria-modal="true" aria-labelledby="rule-editor-title">
+          <div className="editor-header"><div><span className="section-kicker">ATURAN VALIDASI #{editingRuleIndex + 1}</span><h2 id="rule-editor-title">Edit kombinasi aturan.</h2></div><button type="button" className="modal-close" onClick={() => setEditingRuleIndex(null)} aria-label="Tutup"><X size={17} /></button></div>
+          <div className="rule-editor-fields">
+            {[
+              { field: "kip", label: "KIP", options: draft.kips },
+              { field: "customerCase", label: "Case pelanggan", options: draft.customerCases },
+              { field: "issueType", label: "Jenis kendala", options: draft.issueTypes },
+              { field: "onuStatus", label: "Status ONU", options: draft.onuStatuses }
+            ].map(({ field, label, options }) => <label className="bad-ticket-rule-field" key={field}><span>{label}</span><SearchableSelect value={draft.rules[editingRuleIndex][field]} options={options} onChange={(value) => updateRule(editingRuleIndex, field, value)} placeholder={`Pilih ${label.toLowerCase()}`} required /></label>)}
+            <label className="bad-ticket-rule-field rule-editor-wide"><span>Redaksi rekomendasi bad tiket <small>(opsional)</small></span><textarea className="text-input" value={draft.rules[editingRuleIndex].recommendation || ""} maxLength={2000} rows={4} onChange={(event) => updateRule(editingRuleIndex, "recommendation", event.target.value)} placeholder="Tulis rekomendasi untuk kombinasi ini." /></label>
+            <label className="bad-ticket-rule-field rule-editor-wide"><span>Source link KMS</span><input className="text-input" type="url" value={draft.rules[editingRuleIndex].sourceLink || ""} onChange={(event) => updateRule(editingRuleIndex, "sourceLink", event.target.value)} placeholder="https://kms.telkomsel.co.id/content/" required /></label>
+            <label className="bad-ticket-rule-field rule-editor-wide"><span>Hashtag bad tiket</span><select className="text-input" value={draft.rules[editingRuleIndex].hashtag || "#salah_kategori"} onChange={(event) => updateRule(editingRuleIndex, "hashtag", event.target.value)} required>{BAD_TICKET_HASHTAGS.map((hashtag) => <option key={hashtag} value={hashtag}>{hashtag}</option>)}</select></label>
+          </div>
+          <div className="rule-editor-footer"><button type="button" className="delete-action" onClick={() => deleteRule(editingRuleIndex)}><Trash2 size={14} /> Hapus aturan</button><button type="button" className="primary-action" onClick={() => setEditingRuleIndex(null)}><Check size={16} /> Selesai mengedit</button></div>
+        </section>
+      </div>}
     </form>
   );
 }

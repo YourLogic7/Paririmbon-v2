@@ -328,6 +328,15 @@ button:disabled { cursor: not-allowed; opacity: .36; }
 .app-shell[data-theme="dark"] .result-bottom { border-color: #394239; }
 .app-shell[data-theme="dark"] .modal-backdrop { background: rgba(4,9,6,.72); }
 .app-shell[data-theme="dark"] .auth-modal, .app-shell[data-theme="dark"] .editor-modal { border-color: #3b453c; color: #e1e6df; background: #202821; }
+.app-shell[data-theme="dark"] .rule-editor-modal { border-color: #3b453c; color: #e1e6df; background: #202821; }
+.app-shell[data-theme="dark"] .rule-editor-fields .bad-ticket-rule-field > span { color: #d0d9ce; }
+.app-shell[data-theme="dark"] .rule-editor-footer { border-color: #394239; }
+.app-shell[data-theme="dark"] .bad-ticket-rule-summary { border-color: #394239; background: #202821; }
+.app-shell[data-theme="dark"] .bad-ticket-rule-summary-copy strong { color: #e1e8df; }
+.app-shell[data-theme="dark"] .bad-ticket-rule-summary-copy span { color: #aeb8ad; }
+.app-shell[data-theme="dark"] .rule-edit-button { border-color: #3c473d; color: #d0d9ce; background: #1a221c; }
+.app-shell[data-theme="dark"] .rule-edit-button:hover { border-color: #536b50; background: #303e30; }
+.app-shell[data-theme="dark"] .rule-delete-button { border-color: #57403a; color: #e0a99b; background: #342824; }
 .app-shell[data-theme="dark"] .modal-close { border-color: #3c473d; color: #c2cbbf; background: #273128; }
 .app-shell[data-theme="dark"] .modal-icon { border-color: #40543f; color: #c0d9bd; background: #2b392c; }
 .app-shell[data-theme="dark"] .toast { border-color: #435944; color: #d0e3cc; background: #263328; }
@@ -372,6 +381,25 @@ button:disabled { cursor: not-allowed; opacity: .36; }
 .bad-ticket-rules-head h3 { margin: 5px 0 0; color: #344839; font-family: "Playfair Display", serif; font-size: 17px; font-weight: 500; }
 .bad-ticket-rules-head h3 span { color: #9b9b8d; font-family: "DM Sans", sans-serif; font-size: 10px; }
 .bad-ticket-rule { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 9px; padding: 13px; border: 1px solid #ebe8dd; border-radius: 5px; background: #fcfbf6; }
+.bad-ticket-rule-summary { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 7px; padding: 11px 13px; border: 1px solid #ebe8dd; border-radius: 5px; background: #fcfbf6; }
+.bad-ticket-rule-summary-copy { display: grid; min-width: 0; gap: 3px; }
+.bad-ticket-rule-summary-copy strong, .bad-ticket-rule-summary-copy span, .bad-ticket-rule-summary-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bad-ticket-rule-summary-copy strong { color: #344839; font-size: 10px; }
+.bad-ticket-rule-summary-copy span { color: #758071; font-size: 9px; }
+.bad-ticket-rule-summary-copy small { color: #9b8060; font-size: 8px; }
+.bad-ticket-rule-summary-actions { display: inline-flex; flex: 0 0 auto; gap: 6px; }
+.rule-edit-button, .rule-delete-button { min-height: 30px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 0 9px; border: 1px solid #e6e4d9; border-radius: 4px; color: #586354; background: #fffdf7; font-size: 9px; cursor: pointer; }
+.rule-edit-button:hover { border-color: #cbd5c5; color: #344839; background: #eef2eb; }
+.rule-delete-button { width: 30px; padding: 0; border-color: #eee3dd; color: #9a6555; background: #fbf5f1; }
+.rule-editor-backdrop { z-index: 30; }
+.rule-editor-modal { position: relative; width: min(720px, 100%); max-height: min(86vh, 820px); overflow-y: auto; padding: 28px 30px 23px; border: 1px solid #e6e2d7; border-radius: 8px; background: #fffdf7; box-shadow: 0 20px 60px rgba(23,35,27,.2); }
+.rule-editor-modal .editor-header { padding-right: 38px; }
+.rule-editor-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 12px; }
+.rule-editor-wide { grid-column: 1 / -1; }
+.rule-editor-fields .bad-ticket-rule-field > span { display: block; margin-bottom: 6px; color: #758071; font-size: 9px; font-weight: 600; }
+.rule-editor-fields .text-input { min-width: 0; }
+.rule-editor-fields textarea.text-input { resize: vertical; }
+.rule-editor-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 20px; padding-top: 15px; border-top: 1px solid #efede4; }
 .bad-ticket-rule-field { min-width: 0; }
 .bad-ticket-rule-field > span { display: block; margin-bottom: 6px; color: #758071; font-size: 8px; font-weight: 600; }
 .bad-ticket-rule-field > span small { color: #a5a396; font-weight: 400; }
@@ -476,6 +504,9 @@ button:disabled { cursor: not-allowed; opacity: .36; }
   .bad-ticket-admin-intro { flex-direction: column; }
   .bad-ticket-option-grid { grid-template-columns: 1fr; gap: 10px; }
   .bad-ticket-rule { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .bad-ticket-rule-summary { align-items: flex-start; padding: 10px; }
+  .bad-ticket-rule-summary-copy strong, .bad-ticket-rule-summary-copy span, .bad-ticket-rule-summary-copy small { max-width: 55vw; }
+  .rule-editor-modal { padding: 23px 18px 18px; }
   .recommendation-field { grid-column: span 2; }
   .bad-ticket-rule .delete-action { grid-column: span 2; }
   .bad-ticket-admin-footer { align-items: stretch; flex-direction: column; }

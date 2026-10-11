@@ -1,7 +1,14 @@
 import express from "express";
 import { createToken, requireAdmin } from "./auth.js";
-import { connectDatabase, Entry } from "./db.js";
-import { initialEntries } from "../../web/src/data.js";
+import { connectDatabase, Entry, BadTicketConfig } from "./db.js";
+import { initialBadTicketConfig, initialEntries } from "../../web/src/data.js";
+
+const BAD_TICKET_HASHTAGS = [
+  "#salah_kategori",
+  "#salah_tujuan",
+  "#mandatori_tidak_lengkap",
+  "#non_eskalasi"
+];
 
 const app = express();
 app.use(express.json({ limit: "64kb" }));
@@ -16,6 +23,47 @@ function validateEntry(body) {
   }
   if (body.tags !== undefined && (!Array.isArray(body.tags) || body.tags.some((tag) => typeof tag !== "string" || tag.length > 40))) {
     return "Kata kunci harus berupa daftar teks dengan panjang maksimal 40 karakter.";
+  }
+  return null;
+}
+
+function validateBadTicketConfig(body) {
+  const optionFields = ["kips", "customerCases", "issueTypes", "onuStatuses"];
+  if (!body || optionFields.some((field) =>
+    !Array.isArray(body[field]) || body[field].length === 0 || body[field].length > 200 ||
+    body[field].some((value) => typeof value !== "string" || !value.trim() || value.length > 160)
+  )) {
+    return "Setiap daftar pilihan harus berisi 1–200 teks yang valid.";
+  }
+  if (!Array.isArray(body.rules) || body.rules.length > 1000) {
+    return "Daftar aturan harus berisi maksimal 1.000 kombinasi.";
+  }
+  const uniqueOptions = Object.fromEntries(optionFields.map((field) => [
+    field,
+    new Set(body[field].map((value) => value.trim()))
+  ]));
+  const seenRules = new Set();
+  for (const rule of body.rules) {
+    if (!rule || typeof rule !== "object" ||
+      typeof rule.kip !== "string" || !uniqueOptions.kips.has(rule.kip) ||
+      typeof rule.customerCase !== "string" || !uniqueOptions.customerCases.has(rule.customerCase) ||
+      typeof rule.issueType !== "string" || !uniqueOptions.issueTypes.has(rule.issueType) ||
+      typeof rule.onuStatus !== "string" || !uniqueOptions.onuStatuses.has(rule.onuStatus) ||
+      (rule.recommendation !== undefined && (typeof rule.recommendation !== "string" || rule.recommendation.length > 2000)) ||
+      typeof rule.sourceLink !== "string" || rule.sourceLink.length > 500 ||
+      !BAD_TICKET_HASHTAGS.includes(rule.hashtag)
+    ) {
+      return "Setiap aturan harus menggunakan pilihan yang tersedia, redaksi dan source link yang valid, serta hashtag yang tersedia.";
+    }
+    try {
+      const sourceLink = new URL(rule.sourceLink);
+      if (!["http:", "https:"].includes(sourceLink.protocol)) throw new Error("Invalid protocol");
+    } catch {
+      return "Setiap aturan harus memiliki source link HTTP/HTTPS yang valid.";
+    }
+    const signature = JSON.stringify([rule.kip, rule.customerCase, rule.issueType, rule.onuStatus]);
+    if (seenRules.has(signature)) return "Kombinasi aturan tidak boleh duplikat.";
+    seenRules.add(signature);
   }
   return null;
 }
@@ -47,6 +95,55 @@ app.get("/api/entries", async (_request, response, next) => {
     }
     const entries = await Entry.find().sort({ createdAt: 1 }).select("-_id -__v").lean();
     return response.json({ entries });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+app.get("/api/bad-ticket-config", async (_request, response, next) => {
+  try {
+    await connectDatabase();
+    let config = await BadTicketConfig.findOne({ key: "default" }).select("-_id -__v -key").lean();
+    if (!config) {
+      try {
+        const created = await BadTicketConfig.create({ key: "default", ...initialBadTicketConfig });
+        config = created.toObject();
+      } catch (error) {
+        if (error.code !== 11000) throw error;
+        config = await BadTicketConfig.findOne({ key: "default" }).select("-_id -__v -key").lean();
+      }
+    }
+    const storedRules = config.rules?.length ? config.rules : initialBadTicketConfig.rules;
+    const { sourceLink: legacyLink, ...storedConfig } = config;
+    return response.json({
+      config: {
+        ...initialBadTicketConfig,
+        ...storedConfig,
+        rules: storedRules.map((rule) => ({
+          ...rule,
+          recommendation: rule.recommendation || "",
+          sourceLink: rule.sourceLink || legacyLink || initialBadTicketConfig.rules[0]?.sourceLink,
+          hashtag: BAD_TICKET_HASHTAGS.includes(rule.hashtag) ? rule.hashtag : "#salah_kategori"
+        }))
+      }
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+app.put("/api/bad-ticket-config", requireAdmin, async (request, response, next) => {
+  const invalid = validateBadTicketConfig(request.body);
+  if (invalid) return response.status(400).json({ error: invalid });
+  try {
+    await connectDatabase();
+    const config = await BadTicketConfig.findOneAndUpdate(
+      { key: "default" },
+      { ...request.body, key: "default" },
+      { new: true, runValidators: true, upsert: true, setDefaultsOnInsert: true }
+    ).select("-_id -__v -key").lean();
+    await BadTicketConfig.collection.updateOne({ key: "default" }, { $unset: { sourceLink: "" } });
+    return response.json({ config });
   } catch (error) {
     return next(error);
   }

@@ -13,6 +13,28 @@ const entrySchema = new mongoose.Schema({
 
 export const Entry = mongoose.models.Entry || mongoose.model("Entry", entrySchema);
 
+const badTicketRuleSchema = new mongoose.Schema({
+  kip: { type: String, required: true, trim: true, maxlength: 160 },
+  customerCase: { type: String, required: true, trim: true, maxlength: 160 },
+  issueType: { type: String, required: true, trim: true, maxlength: 80 },
+  onuStatus: { type: String, required: true, trim: true, maxlength: 100 },
+  recommendation: { type: String, trim: true, maxlength: 2000, default: "" },
+  sourceLink: { type: String, required: true, trim: true, maxlength: 500, default: "https://kms.telkomsel.co.id/content/" },
+  hashtag: { type: String, required: true, enum: ["#salah_kategori", "#salah_tujuan", "#mandatori_tidak_lengkap", "#non_eskalasi"], default: "#salah_kategori" }
+}, { _id: false });
+
+const badTicketConfigSchema = new mongoose.Schema({
+  key: { type: String, required: true, unique: true, default: "default" },
+  kips: { type: [String], required: true },
+  customerCases: { type: [String], required: true },
+  issueTypes: { type: [String], required: true },
+  onuStatuses: { type: [String], required: true },
+  rules: { type: [badTicketRuleSchema], required: true }
+}, { timestamps: true });
+
+export const BadTicketConfig = mongoose.models.BadTicketConfig ||
+  mongoose.model("BadTicketConfig", badTicketConfigSchema);
+
 let connectionPromise;
 
 export async function connectDatabase() {

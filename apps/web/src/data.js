@@ -71,6 +71,51 @@ export const conditionGroups = [
   }
 ];
 
+export const initialBadTicketConfig = {
+  kips: [
+    "K31 - Tidak Bisa Browsing - 1P / 3P Mati Total",
+    "K31 - Bisa Browsing - Lambat"
+  ],
+  customerCases: [
+    "Internet tidak bisa koneksi",
+    "Internet tidak bisa browsing",
+    "Internet lambat"
+  ],
+  issueTypes: ["Fisik", "Logik"],
+  onuStatuses: ["LOS", "ONLINE", "ONT POWER OFF/DYING GASP", "OFFLINE"],
+  rules: [
+    {
+      kip: "K31 - Bisa Browsing - Lambat",
+      customerCase: "Internet lambat",
+      issueType: "Logik",
+      onuStatus: "ONLINE",
+      recommendation: "Permasalahan internet lambat dengan jenis kendala Logik dan ONU ONLINE seharusnya dibuat menggunakan KIP browsing lambat.",
+      sourceLink: "https://kms.telkomsel.co.id/content/",
+      hashtag: "#salah_kategori"
+    }
+  ]
+};
+
+export function evaluateBadTicket(submission, config) {
+  const matchesRule = (rule, fields) =>
+    fields.every((field) => rule[field] === submission[field]);
+  const exactRule = config.rules.find((rule) =>
+    matchesRule(rule, ["kip", "customerCase", "issueType", "onuStatus"])
+  );
+  const relevantRule = config.rules.find((rule) =>
+    matchesRule(rule, ["customerCase", "issueType", "onuStatus"])
+  ) || config.rules.find((rule) =>
+    matchesRule(rule, ["customerCase", "issueType"])
+  ) || config.rules.find((rule) =>
+    matchesRule(rule, ["customerCase"])
+  );
+
+  return {
+    isBadTicket: !exactRule,
+    expectedRule: relevantRule || null
+  };
+}
+
 export function getRecommendations(caseType, conditions, entries = initialEntries) {
   const normalized = caseType.toLowerCase();
   const keywordMap = [

@@ -15,8 +15,8 @@ Vite berjalan di `http://localhost:5173`, API di `http://localhost:3001`. Salin 
 
 - Buku digital dengan sampul yang dapat dibuka/tutup, daftar isi, pencarian, navigasi halaman, dan tata letak responsif.
 - Admin dapat menambah, menyunting, dan menghapus halaman. Perubahan admin tersimpan ke MongoDB melalui API; bila API tidak tersedia, UI memberi tahu bahwa perubahan hanya tersimpan pada perangkat ini.
-- AI Assist memberi langkah rekomendasi dan panduan terkait berdasarkan situasi dan kondisi yang dipilih. Rekomendasi awal menggunakan aturan dan pengetahuan buku (bukan panggilan ke model AI eksternal).
-- REST API: `GET /api/entries`, `POST /api/auth/login`, `POST /api/entries`, `PUT /api/entries/:id`, `DELETE /api/entries/:id`, `POST /api/assist`, `GET /api/health`.
+- Pemeriksa bad tiket memvalidasi KIP, case pelanggan, jenis kendala, dan status ONU terhadap kombinasi yang disetujui. Admin dapat menyunting daftar dropdown serta mengatur redaksi rekomendasi, source link KMS, dan hashtag (`#salah_kategori`, `#salah_tujuan`, `#mandatori_tidak_lengkap`, `#non_eskalasi`) di setiap aturan dari menu **Edit bad tiket**. Seluruh konfigurasi disimpan di MongoDB dan API mengirim konfigurasi yang sama ke halaman pemeriksa pegawai.
+- REST API: `GET /api/entries`, `POST /api/auth/login`, `POST /api/entries`, `PUT /api/entries/:id`, `DELETE /api/entries/:id`, `GET /api/bad-ticket-config`, `PUT /api/bad-ticket-config` (admin), `GET /api/health`.
 
 ## Deploy ke Vercel
 

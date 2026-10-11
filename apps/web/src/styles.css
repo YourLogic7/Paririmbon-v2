@@ -313,7 +313,57 @@ button:disabled { cursor: not-allowed; opacity: .36; }
 .app-shell[data-theme="dark"] .modal-icon { border-color: #40543f; color: #c0d9bd; background: #2b392c; }
 .app-shell[data-theme="dark"] .toast { border-color: #435944; color: #d0e3cc; background: #263328; }
 .app-shell[data-theme="dark"] .form-error { color: #f0a99d; }
+.app-shell[data-theme="dark"] .bad-ticket-admin, .app-shell[data-theme="dark"] .bad-ticket-rule { border-color: #394239; background: #202821; }
+.app-shell[data-theme="dark"] .bad-ticket-admin-intro h2, .app-shell[data-theme="dark"] .bad-ticket-rules-head h3 { color: #e1e8df; }
+.app-shell[data-theme="dark"] .bad-ticket-admin-intro p, .app-shell[data-theme="dark"] .bad-ticket-admin-footer > span,
+.app-shell[data-theme="dark"] .ticket-result-summary, .app-shell[data-theme="dark"] .bad-ticket-no-rules { color: #aeb8ad; }
+.app-shell[data-theme="dark"] .bad-ticket-rule-field > span, .app-shell[data-theme="dark"] .bad-ticket-option .field-label { color: #d0d9ce; }
+.app-shell[data-theme="dark"] .ticket-source-link { color: #b1c3a9; }
+.app-shell[data-theme="dark"] .ticket-status.good { border-color: #526c53; color: #c4dcc3; background: #29392c; }
+.app-shell[data-theme="dark"] .ticket-status.bad { border-color: #714d43; color: #f0b6a7; background: #382822; }
+.app-shell[data-theme="dark"] .ticket-label { color: #d0d9ce; background: #1a221c; }
 @keyframes toast-in { from { opacity: 0; transform: translateY(7px); } to { opacity: 1; transform: translateY(0); } }
+
+.bad-ticket-form { min-height: 0; }
+.bad-ticket-form .assist-card-head { margin-bottom: 17px; }
+.bad-ticket-field { display: block; margin-bottom: 11px; }
+.bad-ticket-field .field-label { margin-bottom: 6px; }
+.required-mark { color: #a95143 !important; font-size: 11px !important; font-weight: 700 !important; }
+.ticket-ids { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 3px; }
+.ticket-ids .bad-ticket-field { min-width: 0; }
+.ticket-ids .text-input { min-height: 35px; padding: 7px; }
+.ticket-status { margin-left: auto; padding: 5px 7px; border: 1px solid; border-radius: 4px; font-size: 7px; letter-spacing: .4px; white-space: nowrap; }
+.ticket-status.good { border-color: #c9d6c5; color: #426044; background: #edf3e9; }
+.ticket-status.bad { border-color: #e3c7bd; color: #9d4e40; background: #fbefeb; }
+.ticket-result-summary { margin: 0 0 14px; color: #777d72; font-size: 10px; line-height: 1.6; }
+.ticket-label-wrap { margin-top: 12px; }
+.ticket-label { min-height: 190px; resize: vertical; color: #535c50; font-size: 9px; line-height: 1.65; white-space: pre-wrap; }
+.ticket-source-link { display: inline-flex; align-items: center; gap: 6px; margin-top: 10px; color: #526d54; font-size: 9px; font-weight: 600; text-decoration: none; }
+.ticket-source-link:hover { text-decoration: underline; }
+.bad-ticket-admin { padding: 24px; border: 1px solid #ebe8dd; border-radius: 6px; background: #fffdf7; box-shadow: 0 8px 18px rgba(58,55,41,.04); }
+.bad-ticket-admin-intro { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; padding-bottom: 19px; border-bottom: 1px solid #efede4; }
+.bad-ticket-admin-intro h2 { margin: 6px 0; color: #344839; font-family: "Playfair Display", serif; font-size: 21px; font-weight: 500; }
+.bad-ticket-admin-intro p { margin: 0; color: #898c81; font-size: 10px; }
+.bad-ticket-admin-intro .close-book-button { flex: 0 0 auto; }
+.bad-ticket-option-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin: 19px 0 25px; }
+.bad-ticket-option .field-label { margin-bottom: 7px; }
+.bad-ticket-option .field-label small { display: block; margin-top: 4px; color: #a5a396; font-size: 8px; font-weight: 400; }
+.bad-ticket-option textarea { min-height: 104px; resize: vertical; line-height: 1.6; }
+.bad-ticket-rules-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.bad-ticket-rules-head h3 { margin: 5px 0 0; color: #344839; font-family: "Playfair Display", serif; font-size: 17px; font-weight: 500; }
+.bad-ticket-rules-head h3 span { color: #9b9b8d; font-family: "DM Sans", sans-serif; font-size: 10px; }
+.bad-ticket-rule { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 9px; padding: 13px; border: 1px solid #ebe8dd; border-radius: 5px; background: #fcfbf6; }
+.bad-ticket-rule-field { min-width: 0; }
+.bad-ticket-rule-field > span { display: block; margin-bottom: 6px; color: #758071; font-size: 8px; font-weight: 600; }
+.bad-ticket-rule-field > span small { color: #a5a396; font-weight: 400; }
+.bad-ticket-rule-field .text-input { min-width: 0; min-height: 35px; padding: 7px; font-size: 9px; }
+.recommendation-field { grid-column: span 3; }
+.bad-ticket-rule .delete-action { align-self: end; min-height: 35px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 0 8px; border: 1px solid #eee3dd; border-radius: 5px; color: #9a6555; background: #fbf5f1; font-size: 8px; cursor: pointer; }
+.bad-ticket-no-rules { margin: 10px 0; color: #898c81; font-size: 10px; }
+.bad-ticket-error { margin: 13px 0; }
+.bad-ticket-admin-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 18px; padding-top: 15px; border-top: 1px solid #efede4; }
+.bad-ticket-admin-footer > span { display: inline-flex; align-items: center; gap: 6px; color: #929487; font-size: 9px; }
+.bad-ticket-admin-footer > span svg { flex: 0 0 auto; color: #738a6e; }
 
 @media (min-width: 1450px) {
   .reading-area { padding-right: 72px; padding-left: 72px; }
@@ -403,4 +453,13 @@ button:disabled { cursor: not-allowed; opacity: .36; }
   .editor-two-col { grid-template-columns: 1fr; gap: 0; }
   .editor-footer { align-items: flex-start; flex-direction: column; }
   .editor-footer .primary-action { width: 100%; }
+  .bad-ticket-admin { padding: 19px 15px; }
+  .bad-ticket-admin-intro { flex-direction: column; }
+  .bad-ticket-option-grid { grid-template-columns: 1fr; gap: 10px; }
+  .bad-ticket-rule { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .recommendation-field { grid-column: span 2; }
+  .bad-ticket-rule .delete-action { grid-column: span 2; }
+  .bad-ticket-admin-footer { align-items: stretch; flex-direction: column; }
+  .bad-ticket-admin-footer .primary-action { width: 100%; }
+  .ticket-ids { grid-template-columns: 1fr; gap: 0; }
 }

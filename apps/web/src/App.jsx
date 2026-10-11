@@ -487,21 +487,29 @@ function BadTicketAdminPanel({ config, onSave, onBack, localOnly }) {
       ]))
     };
     const invalidOption = optionFields.find(({ field }) => normalized[field].length === 0);
-    const invalidRule = normalized.rules.some((rule) =>
-      !normalized.kips.includes(rule.kip) ||
-      !normalized.customerCases.includes(rule.customerCase) ||
-      !normalized.issueTypes.includes(rule.issueType) ||
-      !normalized.onuStatuses.includes(rule.onuStatus) ||
-      !BAD_TICKET_HASHTAGS.includes(rule.hashtag) ||
-      !isHttpLink(rule.sourceLink)
-    );
+    const ruleIssues = normalized.rules.flatMap((rule, index) => {
+      const fields = [
+        ["KIP", "kip", "kips"],
+        ["Case", "customerCase", "customerCases"],
+        ["Jenis kendala", "issueType", "issueTypes"],
+        ["Status ONU", "onuStatus", "onuStatuses"]
+      ];
+      const missingOptions = fields
+        .filter(([, ruleField, optionField]) => !normalized[optionField].includes(rule[ruleField]))
+        .map(([label]) => label);
+      if (!BAD_TICKET_HASHTAGS.includes(rule.hashtag)) missingOptions.push("hashtag");
+      if (!isHttpLink(rule.sourceLink)) missingOptions.push("source link");
+      return missingOptions.length ? [`Aturan #${index + 1}: periksa ${missingOptions.join(", ")}.`] : [];
+    });
     const signatures = normalized.rules.map((rule) => JSON.stringify([rule.kip, rule.customerCase, rule.issueType, rule.onuStatus]));
     if (invalidOption) {
       setError(`Tambahkan minimal satu pilihan untuk “${invalidOption.label}”.`);
       return;
     }
-    if (invalidRule) {
-      setError("Perbarui aturan agar setiap pilihan masih tersedia dan setiap source link valid.");
+    if (ruleIssues.length) {
+      const visibleIssues = ruleIssues.slice(0, 3).join(" ");
+      const remainingCount = ruleIssues.length - 3;
+      setError(`${visibleIssues}${remainingCount > 0 ? ` Dan ${remainingCount} aturan lainnya.` : ""} Pilih nilai pengganti atau hapus aturan yang tidak digunakan.`);
       return;
     }
     if (new Set(signatures).size !== signatures.length) {
@@ -534,7 +542,7 @@ function BadTicketAdminPanel({ config, onSave, onBack, localOnly }) {
             { field: "customerCase", label: "Case", options: draft.customerCases },
             { field: "issueType", label: "Jenis", options: draft.issueTypes },
             { field: "onuStatus", label: "ONU", options: draft.onuStatuses }
-          ].map(({ field, label, options }) => <label className="bad-ticket-rule-field" key={field}><span>{label}</span><select className="text-input" value={rule[field]} onChange={(event) => updateRule(index, field, event.target.value)} required>{options.map((option) => <option key={option} value={option}>{option}</option>)}</select></label>)}
+          ].map(({ field, label, options }) => <label className="bad-ticket-rule-field" key={field}><span>{label}</span><select className="text-input" value={rule[field]} onChange={(event) => updateRule(index, field, event.target.value)} required>{rule[field] && !options.includes(rule[field]) && <option value={rule[field]} disabled>{rule[field]} (tidak tersedia)</option>}{options.map((option) => <option key={option} value={option}>{option}</option>)}</select></label>)}
           <label className="bad-ticket-rule-field recommendation-field"><span>Redaksi rekomendasi bad tiket <small>(opsional)</small></span><textarea className="text-input" value={rule.recommendation || ""} maxLength={2000} rows={3} onChange={(event) => updateRule(index, "recommendation", event.target.value)} placeholder="Contoh: Permasalahan internet lambat seharusnya dibuat di KIP K31 - Bisa Browsing - Lambat." /></label>
           <label className="bad-ticket-rule-field recommendation-field"><span>Source link KMS</span><input className="text-input" type="url" value={rule.sourceLink || ""} onChange={(event) => updateRule(index, "sourceLink", event.target.value)} placeholder="https://kms.telkomsel.co.id/content/" required /></label>
           <label className="bad-ticket-rule-field recommendation-field"><span>Hashtag bad tiket</span><select className="text-input" value={rule.hashtag || "#salah_kategori"} onChange={(event) => updateRule(index, "hashtag", event.target.value)} required>{BAD_TICKET_HASHTAGS.map((hashtag) => <option key={hashtag} value={hashtag}>{hashtag}</option>)}</select></label>

@@ -9,6 +9,7 @@ import {
   evaluateBadTicket,
   initialBadTicketConfig,
   initialEntries,
+  allIssueTypes,
   missingOnuNoacsStatus,
   missingOnuStatus
 } from "./data.js";
@@ -669,7 +670,10 @@ function BadTicketAdminPanel({ config, onSave, onBack, localOnly }) {
         ["Status ONU", "onuStatus", "onuStatuses"]
       ];
       const missingOptions = fields
-        .filter(([, ruleField, optionField]) => !normalized[optionField].includes(rule[ruleField]))
+        .filter(([, ruleField, optionField]) =>
+          !(optionField === "issueTypes" && rule[ruleField] === allIssueTypes) &&
+          !normalized[optionField].includes(rule[ruleField])
+        )
         .map(([label]) => label);
       if (!BAD_TICKET_HASHTAGS.includes(rule.hashtag)) missingOptions.push("hashtag");
       if (!isHttpLink(rule.sourceLink)) missingOptions.push("source link");
@@ -731,7 +735,7 @@ function BadTicketAdminPanel({ config, onSave, onBack, localOnly }) {
             {[
               { field: "kip", label: "KIP", options: draft.kips },
               { field: "customerCase", label: "Case pelanggan", options: draft.customerCases },
-              { field: "issueType", label: "Jenis kendala", options: draft.issueTypes },
+              { field: "issueType", label: "Jenis kendala", options: [allIssueTypes, ...draft.issueTypes] },
               { field: "onuStatus", label: "Status ONU", options: draft.onuStatuses }
             ].map(({ field, label, options }) => <label className="bad-ticket-rule-field" key={field}><span>{label}</span><SearchableSelect value={draft.rules[editingRuleIndex][field]} options={options} onChange={(value) => updateRule(editingRuleIndex, field, value)} placeholder={`Pilih ${label.toLowerCase()}`} required /></label>)}
             <label className="bad-ticket-rule-field rule-editor-wide"><span>Redaksi rekomendasi bad tiket <small>(opsional)</small></span><textarea className="text-input" value={draft.rules[editingRuleIndex].recommendation || ""} maxLength={2000} rows={4} onChange={(event) => updateRule(editingRuleIndex, "recommendation", event.target.value)} placeholder="Tulis rekomendasi untuk kombinasi ini." /></label>

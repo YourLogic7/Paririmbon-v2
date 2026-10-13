@@ -3,6 +3,7 @@ import { createToken, requireAdmin } from "./auth.js";
 import { connectDatabase, Entry, BadTicketConfig } from "./db.js";
 import {
   detailedCaseCustomerCase,
+  allIssueTypes,
   initialBadTicketConfig,
   initialEntries
 } from "../../web/src/data.js";
@@ -51,7 +52,8 @@ function validateBadTicketConfig(body) {
     if (!rule || typeof rule !== "object" ||
       typeof rule.kip !== "string" || !uniqueOptions.kips.has(rule.kip) ||
       typeof rule.customerCase !== "string" || !uniqueOptions.customerCases.has(rule.customerCase) ||
-      typeof rule.issueType !== "string" || !uniqueOptions.issueTypes.has(rule.issueType) ||
+      typeof rule.issueType !== "string" ||
+      (rule.issueType !== allIssueTypes && !uniqueOptions.issueTypes.has(rule.issueType)) ||
       typeof rule.onuStatus !== "string" || !uniqueOptions.onuStatuses.has(rule.onuStatus) ||
       (rule.recommendation !== undefined && (typeof rule.recommendation !== "string" || rule.recommendation.length > 2000)) ||
       typeof rule.sourceLink !== "string" || rule.sourceLink.length > 500 ||

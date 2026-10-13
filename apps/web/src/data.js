@@ -74,6 +74,7 @@ export const conditionGroups = [
 export const detailedCaseCustomerCase = "Detail Case Pelanggan di Cantumkan Banyak kendala (borongan)";
 export const missingOnuStatus = "Tidak ada keterangan ONU ketika pelaporan";
 export const missingOnuNoacsStatus = "Tidak ada keterangan ONU ketika pelaporan ada Hashtag #NOACS";
+export const allIssueTypes = "all jenis kendala";
 
 export const detailedCaseBadTicketRule = {
   recommendation: "Seharusnya bisa sesuaikan detail case-nya dengan jelas agar selaras dengan pengecekan tools kendala dan KIP yang akan dicantumkan. Pastikan dijelaskan apakah di lokasi tidak bisa koneksi, lambat, atau intermitten, sehingga bisa dibuatkan dengan KIP yang sesuai (SESUAIKAN, contoh: TBC dan Lambat berbeda kategori).",
@@ -132,18 +133,20 @@ export function evaluateBadTicket(submission, config) {
     };
   }
 
-  const matchesRule = (rule, fields) =>
-    fields.every((field) => rule[field] === submission[field]);
-  const exactRule = config.rules.find((rule) =>
-    matchesRule(rule, ["kip", "customerCase", "issueType", "onuStatus"])
-  );
-  const relevantRule = config.rules.find((rule) =>
-    matchesRule(rule, ["customerCase", "issueType", "onuStatus"])
-  ) || config.rules.find((rule) =>
-    matchesRule(rule, ["customerCase", "issueType"])
-  ) || config.rules.find((rule) =>
-    matchesRule(rule, ["customerCase"])
-  );
+  const findMatchingRule = (fields) => {
+    const matchesOtherFields = (rule) => fields
+      .filter((field) => field !== "issueType")
+      .every((field) => rule[field] === submission[field]);
+    return config.rules.find((rule) =>
+      rule.issueType === submission.issueType && matchesOtherFields(rule)
+    ) || config.rules.find((rule) =>
+      rule.issueType === allIssueTypes && matchesOtherFields(rule)
+    );
+  };
+  const exactRule = findMatchingRule(["kip", "customerCase", "issueType", "onuStatus"]);
+  const relevantRule = findMatchingRule(["customerCase", "issueType", "onuStatus"]) ||
+    findMatchingRule(["customerCase", "issueType"]) ||
+    findMatchingRule(["customerCase"]);
 
   return {
     isBadTicket: !exactRule,

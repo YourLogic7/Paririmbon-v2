@@ -122,17 +122,6 @@ export function evaluateBadTicket(submission, config) {
     };
   }
 
-  if (submission.onuStatus === missingOnuNoacsStatus) {
-    return { isBadTicket: false, expectedRule: null };
-  }
-
-  if (submission.onuStatus === missingOnuStatus) {
-    return {
-      isBadTicket: true,
-      expectedRule: { ...missingOnuBadTicketRule, special: "missing-onu" }
-    };
-  }
-
   const findMatchingRule = (fields) => {
     const matchesOtherFields = (rule) => fields
       .filter((field) => field !== "issueType" && field !== "onuStatus")
@@ -148,6 +137,19 @@ export function evaluateBadTicket(submission, config) {
     );
   };
   const exactRule = findMatchingRule(["kip", "customerCase", "issueType", "onuStatus"]);
+  if (exactRule) return { isBadTicket: false, expectedRule: null };
+
+  if (submission.onuStatus === missingOnuNoacsStatus) {
+    return { isBadTicket: false, expectedRule: null };
+  }
+
+  if (submission.onuStatus === missingOnuStatus) {
+    return {
+      isBadTicket: true,
+      expectedRule: { ...missingOnuBadTicketRule, special: "missing-onu" }
+    };
+  }
+
   const relevantRule = findMatchingRule(["customerCase", "issueType", "onuStatus"]) ||
     findMatchingRule(["customerCase", "issueType"]) ||
     findMatchingRule(["customerCase"]);

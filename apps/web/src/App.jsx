@@ -24,6 +24,12 @@ const BAD_TICKET_HASHTAGS = [
   "#mandatori_tidak_lengkap",
   "#non_eskalasi"
 ];
+const BAD_TICKET_RULE_FILTER_FIELDS = [
+  { field: "kip", label: "KIP", allLabel: "Semua KIP" },
+  { field: "customerCase", label: "Case pelanggan", allLabel: "Semua case" },
+  { field: "issueType", label: "Jenis kendala", allLabel: "Semua jenis kendala" },
+  { field: "onuStatus", label: "Status ONU", allLabel: "Semua status ONU" }
+];
 
 async function getResponseError(response, fallback) {
   try {
@@ -588,6 +594,7 @@ function BadTicketPanel({ config, submission, onEdit, result, onSubmit }) {
 function BadTicketAdminPanel({ config, onSave, onBack, localOnly }) {
   const [draft, setDraft] = useState(config);
   const [editingRuleIndex, setEditingRuleIndex] = useState(null);
+  const [ruleFilters, setRuleFilters] = useState({ kip: "", customerCase: "", issueType: "", onuStatus: "" });
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const optionFields = [
@@ -598,6 +605,19 @@ function BadTicketAdminPanel({ config, onSave, onBack, localOnly }) {
   ];
 
   useEffect(() => setDraft(config), [config]);
+
+  const filteredRules = useMemo(() => draft.rules
+    .map((rule, index) => ({ rule, index }))
+    .filter(({ rule }) => BAD_TICKET_RULE_FILTER_FIELDS.every(({ field }) =>
+      !ruleFilters[field] || rule[field] === ruleFilters[field]
+    )), [draft.rules, ruleFilters]);
+
+  useEffect(() => {
+    setRuleFilters((current) => Object.fromEntries(BAD_TICKET_RULE_FILTER_FIELDS.map(({ field }) => {
+      const availableValues = new Set(draft.rules.map((rule) => rule[field]));
+      return [field, availableValues.has(current[field]) ? current[field] : ""];
+    })));
+  }, [draft.rules]);
 
   function updateRule(index, field, value) {
     setDraft((current) => ({
@@ -711,10 +731,19 @@ function BadTicketAdminPanel({ config, onSave, onBack, localOnly }) {
       <div className="bad-ticket-option-grid">
         {optionFields.map(({ field, label }) => <label className="bad-ticket-option" key={field}><span className="field-label">{label}<small>Pisahkan pilihan dengan baris baru</small></span><textarea className="text-input" value={draft[field].join("\n")} onChange={(event) => setDraft((current) => ({ ...current, [field]: event.target.value.split("\n") }))} rows={5} /></label>)}
       </div>
-      <div className="bad-ticket-rules-head"><div><span className="section-kicker">KOMBINASI YANG DISETUJUI</span><h3>Aturan validasi <span>({draft.rules.length})</span></h3></div><button type="button" className="add-button" onClick={addRule}><Plus size={15} /> Tambah aturan</button></div>
+      <div className="bad-ticket-rules-head"><div><span className="section-kicker">KOMBINASI YANG DISETUJUI</span><h3>Aturan validasi <span>({filteredRules.length}/{draft.rules.length})</span></h3></div><button type="button" className="add-button" onClick={addRule}><Plus size={15} /> Tambah aturan</button></div>
       {!draft.rules.length && <p className="bad-ticket-no-rules">Belum ada kombinasi yang disetujui. Semua tiket yang diperiksa akan dianggap bad tiket.</p>}
+      {draft.rules.length > 0 && <div className="bad-ticket-rule-filters">
+        {BAD_TICKET_RULE_FILTER_FIELDS.map(({ field, label, allLabel }) => {
+          const values = [...new Set(draft.rules.map((rule) => rule[field]).filter(Boolean))];
+          return <label className="bad-ticket-rule-filter" key={field}><span>{label}</span><select className="text-input" value={ruleFilters[field]} onChange={(event) => setRuleFilters((current) => ({ ...current, [field]: event.target.value }))}>
+            <option value="">{allLabel}</option>
+            {values.map((value) => <option key={value} value={value}>{value}</option>)}
+          </select></label>;
+        })}
+      </div>}
       <div className="bad-ticket-rules">
-        {draft.rules.map((rule, index) => <div className="bad-ticket-rule-summary" key={`rule-${index}`}>
+        {filteredRules.map(({ rule, index }) => <div className="bad-ticket-rule-summary" key={`rule-${index}`}>
           <div className="bad-ticket-rule-summary-copy">
             <strong>{rule.customerCase || "Case belum dipilih"}</strong>
             <span>{[rule.kip, rule.issueType, rule.onuStatus].filter(Boolean).join(" · ") || "Kombinasi belum lengkap"}</span>
@@ -725,6 +754,7 @@ function BadTicketAdminPanel({ config, onSave, onBack, localOnly }) {
             <button type="button" className="rule-delete-button" aria-label={`Hapus aturan ${index + 1}`} onClick={() => deleteRule(index)}><Trash2 size={13} /></button>
           </div>
         </div>)}
+        {draft.rules.length > 0 && filteredRules.length === 0 && <p className="bad-ticket-no-rules">Tidak ada aturan yang cocok dengan filter ini.</p>}
       </div>
       {error && <div className="form-error bad-ticket-error">{error}</div>}
       <div className="bad-ticket-admin-footer"><span><ShieldCheck size={14} /> {localOnly ? "Mode demo: konfigurasi hanya tersimpan di perangkat ini." : "Konfigurasi akan disimpan ke MongoDB dan dibagikan ke pegawai."}</span><button className="primary-action" type="submit" disabled={saving}><Check size={16} /> {saving ? "Menyimpan..." : "Simpan konfigurasi"}</button></div>

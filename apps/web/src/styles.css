@@ -383,6 +383,12 @@ button:disabled { cursor: not-allowed; opacity: .36; }
 .bad-ticket-rules-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
 .bad-ticket-rules-head h3 { margin: 5px 0 0; color: #344839; font-family: "Playfair Display", serif; font-size: 17px; font-weight: 500; }
 .bad-ticket-rules-head h3 span { color: #9b9b8d; font-family: "DM Sans", sans-serif; font-size: 10px; }
+.bad-ticket-rule-filters { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 9px; margin-bottom: 11px; }
+.bad-ticket-rule-filter { display: grid; min-width: 0; gap: 5px; color: #758071; font-size: 8px; font-weight: 600; }
+.bad-ticket-rule-filter .text-input { min-width: 0; min-height: 34px; padding: 6px 8px; font-size: 9px; }
+.bad-ticket-rules { max-height: 360px; overflow-y: auto; padding-right: 4px; scrollbar-color: #bdc9b6 #f3f1e9; scrollbar-width: thin; }
+.app-shell[data-theme="dark"] .bad-ticket-rule-filter { color: #d0d9ce; }
+.app-shell[data-theme="dark"] .bad-ticket-rules { scrollbar-color: #52644f #273128; }
 .bad-ticket-rule { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 9px; padding: 13px; border: 1px solid #ebe8dd; border-radius: 5px; background: #fcfbf6; }
 .bad-ticket-rule-summary { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 7px; padding: 11px 13px; border: 1px solid #ebe8dd; border-radius: 5px; background: #fcfbf6; }
 .bad-ticket-rule-summary-copy { display: grid; min-width: 0; gap: 3px; }
@@ -468,6 +474,7 @@ button:disabled { cursor: not-allowed; opacity: .36; }
   .assist-form-card { min-height: 0; }
   .assist-result-card { min-height: 320px; }
   .result-empty { min-height: 245px; }
+  .bad-ticket-rule-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 540px) {
   .admin-button span { display: none; }
@@ -506,6 +513,7 @@ button:disabled { cursor: not-allowed; opacity: .36; }
   .bad-ticket-admin { padding: 19px 15px; }
   .bad-ticket-admin-intro { flex-direction: column; }
   .bad-ticket-option-grid { grid-template-columns: 1fr; gap: 10px; }
+  .bad-ticket-rule-filters { gap: 7px; }
   .bad-ticket-rule { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .bad-ticket-rule-summary { align-items: flex-start; padding: 10px; }
   .bad-ticket-rule-summary-copy strong, .bad-ticket-rule-summary-copy span, .bad-ticket-rule-summary-copy small { max-width: 55vw; }

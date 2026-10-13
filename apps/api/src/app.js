@@ -54,7 +54,9 @@ function validateBadTicketConfig(body) {
       typeof rule.customerCase !== "string" || !uniqueOptions.customerCases.has(rule.customerCase) ||
       typeof rule.issueType !== "string" ||
       (rule.issueType !== allIssueTypes && !uniqueOptions.issueTypes.has(rule.issueType)) ||
-      typeof rule.onuStatus !== "string" || !uniqueOptions.onuStatuses.has(rule.onuStatus) ||
+      !Array.isArray(rule.onuStatuses) || rule.onuStatuses.length === 0 ||
+      rule.onuStatuses.length > 200 ||
+      rule.onuStatuses.some((status) => typeof status !== "string" || !uniqueOptions.onuStatuses.has(status)) ||
       (rule.recommendation !== undefined && (typeof rule.recommendation !== "string" || rule.recommendation.length > 2000)) ||
       typeof rule.sourceLink !== "string" || rule.sourceLink.length > 500 ||
       !BAD_TICKET_HASHTAGS.includes(rule.hashtag)
@@ -67,7 +69,12 @@ function validateBadTicketConfig(body) {
     } catch {
       return "Setiap aturan harus memiliki source link HTTP/HTTPS yang valid.";
     }
-    const signature = JSON.stringify([rule.kip, rule.customerCase, rule.issueType, rule.onuStatus]);
+    const signature = JSON.stringify([
+      rule.kip,
+      rule.customerCase,
+      rule.issueType,
+      [...new Set(rule.onuStatuses)].sort()
+    ]);
     if (seenRules.has(signature)) return "Kombinasi aturan tidak boleh duplikat.";
     seenRules.add(signature);
   }
@@ -128,6 +135,9 @@ app.get("/api/bad-ticket-config", async (_request, response, next) => {
         customerCases: [...new Set([...(storedConfig.customerCases || []), detailedCaseCustomerCase])],
         rules: storedRules.map((rule) => ({
           ...rule,
+          onuStatuses: Array.isArray(rule.onuStatuses)
+            ? rule.onuStatuses
+            : typeof rule.onuStatus === "string" ? [rule.onuStatus] : [],
           recommendation: rule.recommendation || "",
           sourceLink: rule.sourceLink || legacyLink || initialBadTicketConfig.rules[0]?.sourceLink,
           hashtag: BAD_TICKET_HASHTAGS.includes(rule.hashtag) ? rule.hashtag : "#salah_kategori"
@@ -140,15 +150,26 @@ app.get("/api/bad-ticket-config", async (_request, response, next) => {
 });
 
 app.put("/api/bad-ticket-config", requireAdmin, async (request, response, next) => {
-  const invalid = validateBadTicketConfig(request.body);
+  const normalizedBody = request.body && Array.isArray(request.body.rules)
+    ? {
+      ...request.body,
+      rules: request.body.rules.map((rule) => ({
+        ...rule,
+        onuStatuses: Array.isArray(rule.onuStatuses)
+          ? rule.onuStatuses
+          : typeof rule.onuStatus === "string" ? [rule.onuStatus] : []
+      }))
+    }
+    : request.body;
+  const invalid = validateBadTicketConfig(normalizedBody);
   if (invalid) return response.status(400).json({ error: invalid });
   try {
     await connectDatabase();
     const config = await BadTicketConfig.findOneAndUpdate(
       { key: "default" },
       {
-        ...request.body,
-        customerCases: [...new Set([...request.body.customerCases, detailedCaseCustomerCase])],
+        ...normalizedBody,
+        customerCases: [...new Set([...normalizedBody.customerCases, detailedCaseCustomerCase])],
         key: "default"
       },
       { new: true, runValidators: true, upsert: true, setDefaultsOnInsert: true }

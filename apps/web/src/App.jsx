@@ -76,6 +76,9 @@ function normalizeBadTicketConfig(config) {
     rules: Array.isArray(config?.rules)
       ? config.rules.map((rule) => ({
         ...rule,
+        onuStatuses: [...new Set(Array.isArray(rule.onuStatuses)
+          ? rule.onuStatuses
+          : typeof rule.onuStatus === "string" ? [rule.onuStatus] : [])],
         recommendation: rule.recommendation || "",
         sourceLink: rule.sourceLink || legacySourceLink,
         hashtag: BAD_TICKET_HASHTAGS.includes(rule.hashtag) ? rule.hashtag : "#salah_kategori"
@@ -609,7 +612,9 @@ function BadTicketAdminPanel({ config, onSave, onBack, localOnly }) {
   const filteredRules = useMemo(() => draft.rules
     .map((rule, index) => ({ rule, index }))
     .filter(({ rule }) => BAD_TICKET_RULE_FILTER_FIELDS.every(({ field }) =>
-      !ruleFilters[field] || rule[field] === ruleFilters[field]
+      !ruleFilters[field] || (field === "onuStatus"
+        ? (rule.onuStatuses || [rule.onuStatus]).includes(ruleFilters[field])
+        : rule[field] === ruleFilters[field])
     )), [draft.rules, ruleFilters]);
 
   useEffect(() => {
@@ -631,7 +636,7 @@ function BadTicketAdminPanel({ config, onSave, onBack, localOnly }) {
       kip: draft.kips[0] || "",
       customerCase: draft.customerCases[0] || "",
       issueType: draft.issueTypes[0] || "",
-      onuStatus: draft.onuStatuses[0] || "",
+      onuStatuses: draft.onuStatuses[0] ? [draft.onuStatuses[0]] : [],
       recommendation: "",
       sourceLink: "",
       hashtag: "#salah_kategori"
@@ -664,19 +669,25 @@ function BadTicketAdminPanel({ config, onSave, onBack, localOnly }) {
       missingOnuStatus,
       missingOnuNoacsStatus
     ])];
-    const ruleFields = {
-      kips: "kip",
-      customerCases: "customerCase",
-      issueTypes: "issueType",
-      onuStatuses: "onuStatus"
-    };
     normalized.rules = normalized.rules.map((rule) => {
-      const updatedRule = { ...rule };
+      const updatedRule = {
+        ...rule,
+        onuStatuses: [...new Set(Array.isArray(rule.onuStatuses)
+          ? rule.onuStatuses
+          : typeof rule.onuStatus === "string" ? [rule.onuStatus] : [])]
+      };
       optionFields.forEach(({ field }) => {
         const removed = config[field].filter((value) => !normalized[field].includes(value));
         const added = normalized[field].filter((value) => !config[field].includes(value));
-        if (removed.length === 1 && added.length === 1 && updatedRule[ruleFields[field]] === removed[0]) {
-          updatedRule[ruleFields[field]] = added[0];
+        if (removed.length === 1 && added.length === 1) {
+          if (field === "onuStatuses") {
+            updatedRule.onuStatuses = updatedRule.onuStatuses.map((status) =>
+              status === removed[0] ? added[0] : status
+            );
+          } else {
+            const ruleField = { kips: "kip", customerCases: "customerCase", issueTypes: "issueType" }[field];
+            if (updatedRule[ruleField] === removed[0]) updatedRule[ruleField] = added[0];
+          }
         }
       });
       return updatedRule;
@@ -687,7 +698,6 @@ function BadTicketAdminPanel({ config, onSave, onBack, localOnly }) {
         ["KIP", "kip", "kips"],
         ["Case", "customerCase", "customerCases"],
         ["Jenis kendala", "issueType", "issueTypes"],
-        ["Status ONU", "onuStatus", "onuStatuses"]
       ];
       const missingOptions = fields
         .filter(([, ruleField, optionField]) =>
@@ -695,11 +705,20 @@ function BadTicketAdminPanel({ config, onSave, onBack, localOnly }) {
           !normalized[optionField].includes(rule[ruleField])
         )
         .map(([label]) => label);
+      if (!Array.isArray(rule.onuStatuses) || !rule.onuStatuses.length ||
+        rule.onuStatuses.some((status) => !normalized.onuStatuses.includes(status))) {
+        missingOptions.push("Status ONU");
+      }
       if (!BAD_TICKET_HASHTAGS.includes(rule.hashtag)) missingOptions.push("hashtag");
       if (!isHttpLink(rule.sourceLink)) missingOptions.push("source link");
       return missingOptions.length ? [`Aturan #${index + 1}: periksa ${missingOptions.join(", ")}.`] : [];
     });
-    const signatures = normalized.rules.map((rule) => JSON.stringify([rule.kip, rule.customerCase, rule.issueType, rule.onuStatus]));
+    const signatures = normalized.rules.map((rule) => JSON.stringify([
+      rule.kip,
+      rule.customerCase,
+      rule.issueType,
+      [...rule.onuStatuses].sort()
+    ]));
     if (invalidOption) {
       setError(`Tambahkan minimal satu pilihan untuk “${invalidOption.label}”.`);
       return;
@@ -729,13 +748,30 @@ function BadTicketAdminPanel({ config, onSave, onBack, localOnly }) {
     <form className="bad-ticket-admin" onSubmit={submit}>
       <div className="bad-ticket-admin-intro"><div><span className="section-kicker">MODE ADMIN</span><h2>Kelola dropdown dan aturan.</h2><p>Hanya kombinasi yang didaftarkan di sini yang akan dinilai bukan bad tiket.</p></div><button className="close-book-button" type="button" onClick={onBack}><ChevronLeft size={15} /> Kembali ke pemeriksa</button></div>
       <div className="bad-ticket-option-grid">
-        {optionFields.map(({ field, label }) => <label className="bad-ticket-option" key={field}><span className="field-label">{label}<small>Pisahkan pilihan dengan baris baru</small></span><textarea className="text-input" value={draft[field].join("\n")} onChange={(event) => setDraft((current) => ({ ...current, [field]: event.target.value.split("\n") }))} rows={5} /></label>)}
+        {optionFields.map(({ field, label }) => <div className="bad-ticket-option" key={field}>
+          <div className="bad-ticket-option-head">
+            <label className="field-label" htmlFor={`bad-ticket-options-${field}`}>{label}<small>Pisahkan pilihan dengan baris baru</small></label>
+            <button
+              type="button"
+              className="option-sort-button"
+              onClick={() => setDraft((current) => ({
+                ...current,
+                [field]: current[field]
+                  .filter((value) => value.trim())
+                  .sort((first, second) => first.localeCompare(second, "id", { sensitivity: "base" }))
+              }))}
+            >Sortir A-Z</button>
+          </div>
+          <textarea id={`bad-ticket-options-${field}`} className="text-input" value={draft[field].join("\n")} onChange={(event) => setDraft((current) => ({ ...current, [field]: event.target.value.split("\n") }))} rows={5} />
+        </div>)}
       </div>
       <div className="bad-ticket-rules-head"><div><span className="section-kicker">KOMBINASI YANG DISETUJUI</span><h3>Aturan validasi <span>({filteredRules.length}/{draft.rules.length})</span></h3></div><button type="button" className="add-button" onClick={addRule}><Plus size={15} /> Tambah aturan</button></div>
       {!draft.rules.length && <p className="bad-ticket-no-rules">Belum ada kombinasi yang disetujui. Semua tiket yang diperiksa akan dianggap bad tiket.</p>}
       {draft.rules.length > 0 && <div className="bad-ticket-rule-filters">
         {BAD_TICKET_RULE_FILTER_FIELDS.map(({ field, label, allLabel }) => {
-          const values = [...new Set(draft.rules.map((rule) => rule[field]).filter(Boolean))];
+          const values = [...new Set(draft.rules.flatMap((rule) =>
+            field === "onuStatus" ? (rule.onuStatuses || [rule.onuStatus]).filter(Boolean) : [rule[field]].filter(Boolean)
+          ))];
           return <label className="bad-ticket-rule-filter" key={field}><span>{label}</span><select className="text-input" value={ruleFilters[field]} onChange={(event) => setRuleFilters((current) => ({ ...current, [field]: event.target.value }))}>
             <option value="">{allLabel}</option>
             {values.map((value) => <option key={value} value={value}>{value}</option>)}
@@ -746,7 +782,7 @@ function BadTicketAdminPanel({ config, onSave, onBack, localOnly }) {
         {filteredRules.map(({ rule, index }) => <div className="bad-ticket-rule-summary" key={`rule-${index}`}>
           <div className="bad-ticket-rule-summary-copy">
             <strong>{rule.customerCase || "Case belum dipilih"}</strong>
-            <span>{[rule.kip, rule.issueType, rule.onuStatus].filter(Boolean).join(" · ") || "Kombinasi belum lengkap"}</span>
+            <span>{[rule.kip, rule.issueType, (rule.onuStatuses || [rule.onuStatus]).filter(Boolean).join(", ")].filter(Boolean).join(" · ") || "Kombinasi belum lengkap"}</span>
             <small>{rule.hashtag || "#salah_kategori"}{rule.recommendation ? ` · ${rule.recommendation}` : ""}</small>
           </div>
           <div className="bad-ticket-rule-summary-actions">
@@ -765,9 +801,27 @@ function BadTicketAdminPanel({ config, onSave, onBack, localOnly }) {
             {[
               { field: "kip", label: "KIP", options: draft.kips },
               { field: "customerCase", label: "Case pelanggan", options: draft.customerCases },
-              { field: "issueType", label: "Jenis kendala", options: [allIssueTypes, ...draft.issueTypes] },
-              { field: "onuStatus", label: "Status ONU", options: draft.onuStatuses }
+              { field: "issueType", label: "Jenis kendala", options: [allIssueTypes, ...draft.issueTypes] }
             ].map(({ field, label, options }) => <label className="bad-ticket-rule-field" key={field}><span>{label}</span><SearchableSelect value={draft.rules[editingRuleIndex][field]} options={options} onChange={(value) => updateRule(editingRuleIndex, field, value)} placeholder={`Pilih ${label.toLowerCase()}`} required /></label>)}
+            <fieldset className="bad-ticket-rule-field rule-onu-statuses">
+              <legend>Status ONU</legend>
+              <small className="rule-onu-status-hint">Pilih satu atau lebih status ONU untuk aturan ini.</small>
+              <div className="rule-onu-status-options">
+                {draft.onuStatuses.map((status) => <label key={status}>
+                  <input
+                    type="checkbox"
+                    checked={(draft.rules[editingRuleIndex].onuStatuses || [draft.rules[editingRuleIndex].onuStatus]).includes(status)}
+                    onChange={(event) => {
+                      const selected = new Set(draft.rules[editingRuleIndex].onuStatuses || [draft.rules[editingRuleIndex].onuStatus]);
+                      if (event.target.checked) selected.add(status);
+                      else selected.delete(status);
+                      updateRule(editingRuleIndex, "onuStatuses", draft.onuStatuses.filter((option) => selected.has(option)));
+                    }}
+                  />
+                  <span>{status}</span>
+                </label>)}
+              </div>
+            </fieldset>
             <label className="bad-ticket-rule-field rule-editor-wide"><span>Redaksi rekomendasi bad tiket <small>(opsional)</small></span><textarea className="text-input" value={draft.rules[editingRuleIndex].recommendation || ""} maxLength={2000} rows={4} onChange={(event) => updateRule(editingRuleIndex, "recommendation", event.target.value)} placeholder="Tulis rekomendasi untuk kombinasi ini." /></label>
             <label className="bad-ticket-rule-field rule-editor-wide"><span>Source link KMS</span><input className="text-input" type="url" value={draft.rules[editingRuleIndex].sourceLink || ""} onChange={(event) => updateRule(editingRuleIndex, "sourceLink", event.target.value)} placeholder="https://kms.telkomsel.co.id/content/" required /></label>
             <label className="bad-ticket-rule-field rule-editor-wide"><span>Hashtag bad tiket</span><select className="text-input" value={draft.rules[editingRuleIndex].hashtag || "#salah_kategori"} onChange={(event) => updateRule(editingRuleIndex, "hashtag", event.target.value)} required>{BAD_TICKET_HASHTAGS.map((hashtag) => <option key={hashtag} value={hashtag}>{hashtag}</option>)}</select></label>

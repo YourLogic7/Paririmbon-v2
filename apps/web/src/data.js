@@ -106,7 +106,7 @@ export const initialBadTicketConfig = {
       kip: "K31 - Bisa Browsing - Lambat",
       customerCase: "Internet lambat",
       issueType: "Logik",
-      onuStatus: "ONLINE",
+      onuStatuses: ["ONLINE"],
       recommendation: "Permasalahan internet lambat dengan jenis kendala Logik dan ONU ONLINE seharusnya dibuat menggunakan KIP browsing lambat.",
       sourceLink: "https://kms.telkomsel.co.id/content/",
       hashtag: "#salah_kategori"
@@ -135,8 +135,12 @@ export function evaluateBadTicket(submission, config) {
 
   const findMatchingRule = (fields) => {
     const matchesOtherFields = (rule) => fields
-      .filter((field) => field !== "issueType")
-      .every((field) => rule[field] === submission[field]);
+      .filter((field) => field !== "issueType" && field !== "onuStatus")
+      .every((field) => rule[field] === submission[field]) &&
+      (!fields.includes("onuStatus") ||
+        (Array.isArray(rule.onuStatuses)
+          ? rule.onuStatuses.includes(submission.onuStatus)
+          : rule.onuStatus === submission.onuStatus));
     return config.rules.find((rule) =>
       rule.issueType === submission.issueType && matchesOtherFields(rule)
     ) || config.rules.find((rule) =>

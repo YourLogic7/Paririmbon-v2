@@ -17,7 +17,7 @@ const badTicketRuleSchema = new mongoose.Schema({
   kip: { type: String, required: true, trim: true, maxlength: 160 },
   customerCase: { type: String, required: true, trim: true, maxlength: 160 },
   issueType: { type: String, required: true, trim: true, maxlength: 80 },
-  onuStatus: { type: String, required: true, trim: true, maxlength: 100 },
+  onuStatuses: { type: [String], required: true, validate: (statuses) => Array.isArray(statuses) && statuses.length > 0 },
   recommendation: { type: String, trim: true, maxlength: 2000, default: "" },
   sourceLink: { type: String, required: true, trim: true, maxlength: 500, default: "https://kms.telkomsel.co.id/content/" },
   hashtag: { type: String, required: true, enum: ["#salah_kategori", "#salah_tujuan", "#mandatori_tidak_lengkap", "#non_eskalasi"], default: "#salah_kategori" }

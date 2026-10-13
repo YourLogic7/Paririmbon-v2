@@ -114,6 +114,13 @@ export const initialBadTicketConfig = {
 };
 
 export function evaluateBadTicket(submission, config) {
+  if (submission.customerCase === detailedCaseCustomerCase) {
+    return {
+      isBadTicket: true,
+      expectedRule: { ...detailedCaseBadTicketRule, special: true }
+    };
+  }
+
   if (submission.onuStatus === missingOnuNoacsStatus) {
     return { isBadTicket: false, expectedRule: null };
   }
@@ -122,13 +129,6 @@ export function evaluateBadTicket(submission, config) {
     return {
       isBadTicket: true,
       expectedRule: { ...missingOnuBadTicketRule, special: "missing-onu" }
-    };
-  }
-
-  if (submission.customerCase === detailedCaseCustomerCase) {
-    return {
-      isBadTicket: true,
-      expectedRule: { ...detailedCaseBadTicketRule, special: true }
     };
   }
 

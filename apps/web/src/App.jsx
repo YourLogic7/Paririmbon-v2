@@ -5,7 +5,13 @@ import {
   FileText, Lightbulb, LockKeyhole, LogIn, LogOut, Moon, Pencil, Plus,
   Search, ShieldCheck, Sparkles, Sun, Trash2, X
 } from "lucide-react";
-import { evaluateBadTicket, initialBadTicketConfig, initialEntries } from "./data.js";
+import {
+  evaluateBadTicket,
+  initialBadTicketConfig,
+  initialEntries,
+  missingOnuNoacsStatus,
+  missingOnuStatus
+} from "./data.js";
 
 const STORAGE_KEY = "paririmbon.entries.v1";
 const BAD_TICKET_STORAGE_KEY = "paririmbon.bad-ticket-config.v1";
@@ -55,6 +61,11 @@ function normalizeBadTicketConfig(config) {
   return {
     ...initialBadTicketConfig,
     ...currentConfig,
+    onuStatuses: [...new Set([
+      ...(Array.isArray(config?.onuStatuses) ? config.onuStatuses : initialBadTicketConfig.onuStatuses),
+      missingOnuStatus,
+      missingOnuNoacsStatus
+    ])],
     rules: Array.isArray(config?.rules)
       ? config.rules.map((rule) => ({
         ...rule,
@@ -325,6 +336,17 @@ function App() {
   function evaluateTicket(event) {
     event.preventDefault();
     const evaluation = evaluateBadTicket(ticketSubmission, badTicketConfig);
+    if (evaluation.expectedRule?.special === "missing-onu") {
+      const label = [
+        `ID Case : ${ticketSubmission.caseId || "1-XXXXX"} / ${ticketSubmission.incident || "INCXXXXX"}, No IH : ${ticketSubmission.ihNumber || "1XXXXXXX"}. Detail Permasalahan pelanggan adalah (COPY DARI DSC YA KAKAK2), namun tidak ada capture atau keterangan ONU ketika pelaporan.`,
+        evaluation.expectedRule.recommendation,
+        "",
+        `#badtiketC4 ${evaluation.expectedRule.hashtag}`,
+        evaluation.expectedRule.sourceLink
+      ].join("\n");
+      setTicketResult({ ...evaluation, label });
+      return;
+    }
     if (evaluation.expectedRule?.special) {
       const label = [
         `ID Case : ${ticketSubmission.caseId || "1-XXXXX"} / ${ticketSubmission.incident || "INCXXXXX"} No IH : ${ticketSubmission.ihNumber || "1XXXXXXX"}`,
@@ -614,6 +636,11 @@ function BadTicketAdminPanel({ config, onSave, onBack, localOnly }) {
         [...new Set(draft[field].map((value) => value.trim()).filter(Boolean))]
       ]))
     };
+    normalized.onuStatuses = [...new Set([
+      ...normalized.onuStatuses,
+      missingOnuStatus,
+      missingOnuNoacsStatus
+    ])];
     const ruleFields = {
       kips: "kip",
       customerCases: "customerCase",

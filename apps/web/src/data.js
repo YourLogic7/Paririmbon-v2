@@ -72,10 +72,18 @@ export const conditionGroups = [
 ];
 
 export const detailedCaseCustomerCase = "Detail Case Pelanggan di Cantumkan Banyak kendala (borongan)";
+export const missingOnuStatus = "Tidak ada keterangan ONU ketika pelaporan";
+export const missingOnuNoacsStatus = "Tidak ada keterangan ONU ketika pelaporan ada Hashtag #NOACS";
 
 export const detailedCaseBadTicketRule = {
   recommendation: "Seharusnya bisa sesuaikan detail case-nya dengan jelas agar selaras dengan pengecekan tools kendala dan KIP yang akan dicantumkan. Pastikan dijelaskan apakah di lokasi tidak bisa koneksi, lambat, atau intermitten, sehingga bisa dibuatkan dengan KIP yang sesuai (TBC dan Lambat berbeda kategori).",
   sourceLink: "https://kms.telkomsel.co.id/content/",
+  hashtag: "#mandatori_tidak_lengkap"
+};
+
+export const missingOnuBadTicketRule = {
+  recommendation: "Seharusnya bisa melengkapi mandatory dengan mencantumkan capture full dari topologi, status RX, ONU dan Type modem pelanggan, sesuai KM12081024177",
+  sourceLink: "https://kms.telkomsel.co.id/content/KM12081024177",
   hashtag: "#mandatori_tidak_lengkap"
 };
 
@@ -91,7 +99,7 @@ export const initialBadTicketConfig = {
     detailedCaseCustomerCase
   ],
   issueTypes: ["Fisik", "Logik"],
-  onuStatuses: ["LOS", "ONLINE", "ONT POWER OFF/DYING GASP", "OFFLINE"],
+  onuStatuses: ["LOS", "ONLINE", "ONT POWER OFF/DYING GASP", "OFFLINE", missingOnuStatus, missingOnuNoacsStatus],
   rules: [
     {
       kip: "K31 - Bisa Browsing - Lambat",
@@ -106,6 +114,17 @@ export const initialBadTicketConfig = {
 };
 
 export function evaluateBadTicket(submission, config) {
+  if (submission.onuStatus === missingOnuNoacsStatus) {
+    return { isBadTicket: false, expectedRule: null };
+  }
+
+  if (submission.onuStatus === missingOnuStatus) {
+    return {
+      isBadTicket: true,
+      expectedRule: { ...missingOnuBadTicketRule, special: "missing-onu" }
+    };
+  }
+
   if (submission.customerCase === detailedCaseCustomerCase) {
     return {
       isBadTicket: true,

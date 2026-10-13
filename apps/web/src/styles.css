@@ -366,6 +366,9 @@ button:disabled { cursor: not-allowed; opacity: .36; }
 .ticket-result-summary { margin: 0 0 14px; color: #777d72; font-size: 10px; line-height: 1.6; }
 .ticket-label-wrap { margin-top: 12px; }
 .ticket-label { min-height: 190px; resize: vertical; color: #535c50; font-size: 9px; line-height: 1.65; white-space: pre-wrap; }
+.ticket-label-preview { min-height: 190px; overflow-wrap: anywhere; user-select: text; }
+.ticket-label-emphasis { color: #c0392b; font-weight: 700; }
+.app-shell[data-theme="dark"] .ticket-label-emphasis { color: #ff8b7d; }
 .ticket-source-link { display: inline-flex; align-items: center; gap: 6px; margin-top: 10px; color: #526d54; font-size: 9px; font-weight: 600; text-decoration: none; }
 .ticket-source-link:hover { text-decoration: underline; }
 .bad-ticket-admin { padding: 24px; border: 1px solid #ebe8dd; border-radius: 6px; background: #fffdf7; box-shadow: 0 8px 18px rgba(58,55,41,.04); }

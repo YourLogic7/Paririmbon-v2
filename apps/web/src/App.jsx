@@ -336,18 +336,7 @@ function App() {
   function evaluateTicket(event) {
     event.preventDefault();
     const evaluation = evaluateBadTicket(ticketSubmission, badTicketConfig);
-    if (evaluation.expectedRule?.special === "missing-onu") {
-      const label = [
-        `ID Case : ${ticketSubmission.caseId || "1-XXXXX"} / ${ticketSubmission.incident || "INCXXXXX"}, No IH : ${ticketSubmission.ihNumber || "1XXXXXXX"}. Detail Permasalahan pelanggan adalah (COPY DARI DSC YA KAKAK2), namun tidak ada capture atau keterangan ONU ketika pelaporan.`,
-        evaluation.expectedRule.recommendation,
-        "",
-        `#badtiketC4 ${evaluation.expectedRule.hashtag}`,
-        evaluation.expectedRule.sourceLink
-      ].join("\n");
-      setTicketResult({ ...evaluation, label });
-      return;
-    }
-    if (evaluation.expectedRule?.special) {
+    if (evaluation.expectedRule?.special === "detailed-case") {
       const label = [
         `ID Case : ${ticketSubmission.caseId || "1-XXXXX"} / ${ticketSubmission.incident || "INCXXXXX"} No IH : ${ticketSubmission.ihNumber || "1XXXXXXX"}`,
         "Di detail pelaporan (copy dari DSC)",
@@ -356,6 +345,17 @@ function App() {
         "",
         "#badtiketC4",
         evaluation.expectedRule.hashtag,
+        "https://kms.telkomsel.co.id/content/(SESUAIKAN)"
+      ].join("\n");
+      setTicketResult({ ...evaluation, label, formattedLabel: true });
+      return;
+    }
+    if (evaluation.expectedRule?.special === "missing-onu") {
+      const label = [
+        `ID Case : ${ticketSubmission.caseId || "1-XXXXX"} / ${ticketSubmission.incident || "INCXXXXX"}, No IH : ${ticketSubmission.ihNumber || "1XXXXXXX"}. Detail Permasalahan pelanggan adalah (COPY DARI DSC YA KAKAK2), namun tidak ada capture atau keterangan ONU ketika pelaporan.`,
+        evaluation.expectedRule.recommendation,
+        "",
+        `#badtiketC4 ${evaluation.expectedRule.hashtag}`,
         evaluation.expectedRule.sourceLink
       ].join("\n");
       setTicketResult({ ...evaluation, label });
@@ -572,7 +572,9 @@ function BadTicketPanel({ config, submission, onEdit, result, onSubmit }) {
             <p className="ticket-result-summary">{result.isBadTicket
               ? "Kombinasi KIP, case pelanggan, jenis kendala, dan status ONU tidak ditemukan pada aturan yang disetujui."
               : "Semua pilihan cocok dengan kombinasi aturan yang disetujui admin."}</p>
-            {result.isBadTicket && <div className="ticket-label-wrap"><label className="field-label" htmlFor="bad-ticket-label">Rekomendasi redaksi pelabelan</label><textarea id="bad-ticket-label" className="text-input ticket-label" value={result.label} readOnly /></div>}
+            {result.isBadTicket && <div className="ticket-label-wrap"><label className="field-label" htmlFor="bad-ticket-label">Rekomendasi redaksi pelabelan</label>{result.formattedLabel
+              ? <div id="bad-ticket-label" className="text-input ticket-label ticket-label-preview" role="textbox" aria-readonly="true" tabIndex={0}>{result.label.split(/(SESUAIKAN)/g).map((part, index) => part === "SESUAIKAN" ? <strong className="ticket-label-emphasis" key={index}>{part}</strong> : part)}</div>
+              : <textarea id="bad-ticket-label" className="text-input ticket-label" value={result.label} readOnly />}</div>}
             {result.isBadTicket && result.expectedRule?.sourceLink && <a className="ticket-source-link" href={result.expectedRule.sourceLink} target="_blank" rel="noreferrer"><FileText size={14} /> Buka source KMS <ArrowRight size={14} /></a>}
           </div>
         )}

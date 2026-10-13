@@ -76,7 +76,7 @@ export const missingOnuStatus = "Tidak ada keterangan ONU ketika pelaporan";
 export const missingOnuNoacsStatus = "Tidak ada keterangan ONU ketika pelaporan ada Hashtag #NOACS";
 
 export const detailedCaseBadTicketRule = {
-  recommendation: "Seharusnya bisa sesuaikan detail case-nya dengan jelas agar selaras dengan pengecekan tools kendala dan KIP yang akan dicantumkan. Pastikan dijelaskan apakah di lokasi tidak bisa koneksi, lambat, atau intermitten, sehingga bisa dibuatkan dengan KIP yang sesuai (TBC dan Lambat berbeda kategori).",
+  recommendation: "Seharusnya bisa sesuaikan detail case-nya dengan jelas agar selaras dengan pengecekan tools kendala dan KIP yang akan dicantumkan. Pastikan dijelaskan apakah di lokasi tidak bisa koneksi, lambat, atau intermitten, sehingga bisa dibuatkan dengan KIP yang sesuai (SESUAIKAN, contoh: TBC dan Lambat berbeda kategori).",
   sourceLink: "https://kms.telkomsel.co.id/content/",
   hashtag: "#mandatori_tidak_lengkap"
 };
@@ -117,7 +117,7 @@ export function evaluateBadTicket(submission, config) {
   if (submission.customerCase === detailedCaseCustomerCase) {
     return {
       isBadTicket: true,
-      expectedRule: { ...detailedCaseBadTicketRule, special: true }
+      expectedRule: { ...detailedCaseBadTicketRule, special: "detailed-case" }
     };
   }
 

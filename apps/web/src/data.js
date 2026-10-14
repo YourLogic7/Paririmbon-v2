@@ -75,6 +75,22 @@ export const detailedCaseCustomerCase = "Detail Case Pelanggan di Cantumkan Bany
 export const missingOnuStatus = "Tidak ada keterangan ONU ketika pelaporan";
 export const missingOnuNoacsStatus = "Tidak ada keterangan ONU ketika pelaporan ada Hashtag #NOACS";
 export const allIssueTypes = "all jenis kendala";
+export const allKipsBad = "All KIP pasti Bad";
+export const allKipsNotBad = "All KIP Tidak bad";
+export const allKipRuleOptions = [allKipsBad, allKipsNotBad];
+
+export function hasConflictingAllKipRules(rules) {
+  return rules.some((rule, index) => rules.slice(index + 1).some((otherRule) => {
+    const isUniversalKipRule = (candidate) => allKipRuleOptions.includes(candidate.kip);
+    if (!isUniversalKipRule(rule) || !isUniversalKipRule(otherRule) || rule.kip === otherRule.kip) return false;
+    if (rule.customerCase !== otherRule.customerCase ||
+      (rule.issueType !== otherRule.issueType &&
+        rule.issueType !== allIssueTypes && otherRule.issueType !== allIssueTypes)) return false;
+    const ruleOnuStatuses = rule.onuStatuses || [rule.onuStatus];
+    const otherOnuStatuses = otherRule.onuStatuses || [otherRule.onuStatus];
+    return ruleOnuStatuses.some((status) => otherOnuStatuses.includes(status));
+  }));
+}
 
 export const detailedCaseBadTicketRule = {
   recommendation: "Seharusnya bisa sesuaikan detail case-nya dengan jelas agar selaras dengan pengecekan tools kendala dan KIP yang akan dicantumkan. Pastikan dijelaskan apakah di lokasi tidak bisa koneksi, lambat, atau intermitten, sehingga bisa dibuatkan dengan KIP yang sesuai (SESUAIKAN, contoh: TBC dan Lambat berbeda kategori).",
@@ -122,6 +138,21 @@ export function evaluateBadTicket(submission, config) {
     };
   }
 
+  const matchesUniversalKipScope = (rule) =>
+    rule.customerCase === submission.customerCase &&
+    (rule.issueType === submission.issueType || rule.issueType === allIssueTypes) &&
+    (Array.isArray(rule.onuStatuses)
+      ? rule.onuStatuses.includes(submission.onuStatus)
+      : rule.onuStatus === submission.onuStatus);
+  const universalKipRule = config.rules.find((rule) =>
+    allKipRuleOptions.includes(rule.kip) && matchesUniversalKipScope(rule)
+  );
+  if (universalKipRule) {
+    return universalKipRule.kip === allKipsBad
+      ? { isBadTicket: true, expectedRule: { ...universalKipRule, kip: "", special: "all-kips-bad" } }
+      : { isBadTicket: false, expectedRule: null };
+  }
+
   const findMatchingRule = (fields) => {
     const matchesOtherFields = (rule) => fields
       .filter((field) => field !== "issueType" && field !== "onuStatus")
@@ -131,8 +162,10 @@ export function evaluateBadTicket(submission, config) {
           ? rule.onuStatuses.includes(submission.onuStatus)
           : rule.onuStatus === submission.onuStatus));
     return config.rules.find((rule) =>
+      !allKipRuleOptions.includes(rule.kip) &&
       rule.issueType === submission.issueType && matchesOtherFields(rule)
     ) || config.rules.find((rule) =>
+      !allKipRuleOptions.includes(rule.kip) &&
       rule.issueType === allIssueTypes && matchesOtherFields(rule)
     );
   };

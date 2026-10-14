@@ -7,6 +7,10 @@ import {
 } from "lucide-react";
 import {
   evaluateBadTicket,
+  allKipRuleOptions,
+  allKipsBad,
+  allKipsNotBad,
+  hasConflictingAllKipRules,
   initialBadTicketConfig,
   initialEntries,
   allIssueTypes,
@@ -68,6 +72,8 @@ function normalizeBadTicketConfig(config) {
   return {
     ...initialBadTicketConfig,
     ...currentConfig,
+    kips: (Array.isArray(currentConfig.kips) ? currentConfig.kips : initialBadTicketConfig.kips)
+      .filter((kip) => !allKipRuleOptions.includes(kip)),
     onuStatuses: [...new Set([
       ...(Array.isArray(config?.onuStatuses) ? config.onuStatuses : initialBadTicketConfig.onuStatuses),
       missingOnuStatus,
@@ -372,9 +378,14 @@ function App() {
       return;
     }
     const expectedKip = evaluation.expectedRule?.kip;
-    const expectedText = expectedKip
-      ? `Seharusnya dibuat di KIP: ${expectedKip}\n${evaluation.expectedRule.recommendation || "Gunakan KIP ini untuk kendala dan kondisi tersebut."}`
-      : "Seharusnya gunakan KIP yang sesuai dengan case pelanggan, jenis kendala, dan status ONU. Verifikasi kembali pada KMS.";
+    let expectedText;
+    if (evaluation.expectedRule?.special === "all-kips-bad") {
+      expectedText = `Kombinasi ini dinilai bad tiket untuk KIP apa pun.\n${evaluation.expectedRule.recommendation || ""}`;
+    } else if (expectedKip) {
+      expectedText = `Seharusnya dibuat di KIP: ${expectedKip}\n${evaluation.expectedRule.recommendation || "Gunakan KIP ini untuk kendala dan kondisi tersebut."}`;
+    } else {
+      expectedText = "Seharusnya gunakan KIP yang sesuai dengan case pelanggan, jenis kendala, dan status ONU. Verifikasi kembali pada KMS.";
+    }
     const label = [
       `▪ ID Case : ${ticketSubmission.caseId || "1-XXXXX"} / ${ticketSubmission.incident || "INCXXXXX"} No IH : ${ticketSubmission.ihNumber || "1XXXXXXX"}`,
       `Permasalahan pelanggan: ${ticketSubmission.customerCase}`,
@@ -580,7 +591,9 @@ function BadTicketPanel({ config, submission, onEdit, result, onSubmit }) {
             <div className="result-label"><span className="result-spark"><Sparkles size={13} /></span> HASIL PEMERIKSAAN <span className={`ticket-status ${result.isBadTicket ? "bad" : "good"}`}>{result.isBadTicket ? "BAD TIKET" : "BUKAN BAD TIKET"}</span></div>
             <h3>{result.isBadTicket ? <>Tiket perlu<br /><em>diperbaiki.</em></> : <>Tiket sudah<br /><em>sesuai aturan.</em></>}</h3>
             <p className="ticket-result-summary">{result.isBadTicket
-              ? "Kombinasi KIP, case pelanggan, jenis kendala, dan status ONU tidak ditemukan pada aturan yang disetujui."
+              ? result.expectedRule?.special === "all-kips-bad"
+                ? "Kombinasi case pelanggan, jenis kendala, dan status ONU cocok dengan aturan All KIP pasti Bad."
+                : "Kombinasi KIP, case pelanggan, jenis kendala, dan status ONU tidak ditemukan pada aturan yang disetujui."
               : "Semua pilihan cocok dengan kombinasi aturan yang disetujui admin."}</p>
             {result.isBadTicket && <div className="ticket-label-wrap"><label className="field-label" htmlFor="bad-ticket-label">Rekomendasi redaksi pelabelan</label>{result.formattedLabel
               ? <div id="bad-ticket-label" className="text-input ticket-label ticket-label-preview" role="textbox" aria-readonly="true" tabIndex={0}>{result.label.split(/(SESUAIKAN)/g).map((part, index) => part === "SESUAIKAN" ? <strong className="ticket-label-emphasis" key={index}>{part}</strong> : part)}</div>
@@ -701,6 +714,7 @@ function BadTicketAdminPanel({ config, onSave, onBack, localOnly }) {
       ];
       const missingOptions = fields
         .filter(([, ruleField, optionField]) =>
+          !(optionField === "kips" && allKipRuleOptions.includes(rule[ruleField])) &&
           !(optionField === "issueTypes" && rule[ruleField] === allIssueTypes) &&
           !normalized[optionField].includes(rule[ruleField])
         )
@@ -723,6 +737,10 @@ function BadTicketAdminPanel({ config, onSave, onBack, localOnly }) {
       setError(`Tambahkan minimal satu pilihan untuk “${invalidOption.label}”.`);
       return;
     }
+    if (normalized.kips.some((kip) => allKipRuleOptions.includes(kip))) {
+      setError("Pilihan All KIP hanya tersedia pada editor aturan dan tidak boleh menjadi KIP pelaporan.");
+      return;
+    }
     if (ruleIssues.length) {
       const visibleIssues = ruleIssues.slice(0, 3).join(" ");
       const remainingCount = ruleIssues.length - 3;
@@ -731,6 +749,10 @@ function BadTicketAdminPanel({ config, onSave, onBack, localOnly }) {
     }
     if (new Set(signatures).size !== signatures.length) {
       setError("Setiap kombinasi aturan harus unik.");
+      return;
+    }
+    if (hasConflictingAllKipRules(normalized.rules)) {
+      setError("Aturan All KIP Bad dan All KIP Tidak bad tidak boleh berlaku untuk kombinasi yang sama.");
       return;
     }
     setSaving(true);
@@ -746,7 +768,7 @@ function BadTicketAdminPanel({ config, onSave, onBack, localOnly }) {
 
   return (
     <form className="bad-ticket-admin" onSubmit={submit}>
-      <div className="bad-ticket-admin-intro"><div><span className="section-kicker">MODE ADMIN</span><h2>Kelola dropdown dan aturan.</h2><p>Hanya kombinasi yang didaftarkan di sini yang akan dinilai bukan bad tiket.</p></div><button className="close-book-button" type="button" onClick={onBack}><ChevronLeft size={15} /> Kembali ke pemeriksa</button></div>
+      <div className="bad-ticket-admin-intro"><div><span className="section-kicker">MODE ADMIN</span><h2>Kelola dropdown dan aturan.</h2><p>Atur kombinasi yang bukan bad tiket atau tandai kombinasi tertentu sebagai bad tiket untuk semua KIP.</p></div><button className="close-book-button" type="button" onClick={onBack}><ChevronLeft size={15} /> Kembali ke pemeriksa</button></div>
       <div className="bad-ticket-option-grid">
         {optionFields.map(({ field, label }) => <div className="bad-ticket-option" key={field}>
           <div className="bad-ticket-option-head">
@@ -799,7 +821,7 @@ function BadTicketAdminPanel({ config, onSave, onBack, localOnly }) {
           <div className="editor-header"><div><span className="section-kicker">ATURAN VALIDASI #{editingRuleIndex + 1}</span><h2 id="rule-editor-title">Edit kombinasi aturan.</h2></div><button type="button" className="modal-close" onClick={() => setEditingRuleIndex(null)} aria-label="Tutup"><X size={17} /></button></div>
           <div className="rule-editor-fields">
             {[
-              { field: "kip", label: "KIP", options: draft.kips },
+              { field: "kip", label: "KIP", options: [...draft.kips, allKipsBad, allKipsNotBad] },
               { field: "customerCase", label: "Case pelanggan", options: draft.customerCases },
               { field: "issueType", label: "Jenis kendala", options: [allIssueTypes, ...draft.issueTypes] }
             ].map(({ field, label, options }) => <label className="bad-ticket-rule-field" key={field}><span>{label}</span><SearchableSelect value={draft.rules[editingRuleIndex][field]} options={options} onChange={(value) => updateRule(editingRuleIndex, field, value)} placeholder={`Pilih ${label.toLowerCase()}`} required /></label>)}

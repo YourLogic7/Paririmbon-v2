@@ -4,6 +4,8 @@ import { connectDatabase, Entry, BadTicketConfig } from "./db.js";
 import {
   detailedCaseCustomerCase,
   allIssueTypes,
+  allKipRuleOptions,
+  hasConflictingAllKipRules,
   initialBadTicketConfig,
   initialEntries
 } from "../../web/src/data.js";
@@ -40,6 +42,9 @@ function validateBadTicketConfig(body) {
   )) {
     return "Setiap daftar pilihan harus berisi 1–200 teks yang valid.";
   }
+  if (body.kips.some((kip) => allKipRuleOptions.includes(kip))) {
+    return "Pilihan All KIP hanya boleh digunakan pada aturan, bukan sebagai KIP pelaporan.";
+  }
   if (!Array.isArray(body.rules) || body.rules.length > 1000) {
     return "Daftar aturan harus berisi maksimal 1.000 kombinasi.";
   }
@@ -50,7 +55,8 @@ function validateBadTicketConfig(body) {
   const seenRules = new Set();
   for (const rule of body.rules) {
     if (!rule || typeof rule !== "object" ||
-      typeof rule.kip !== "string" || !uniqueOptions.kips.has(rule.kip) ||
+      typeof rule.kip !== "string" ||
+      (!uniqueOptions.kips.has(rule.kip) && !allKipRuleOptions.includes(rule.kip)) ||
       typeof rule.customerCase !== "string" || !uniqueOptions.customerCases.has(rule.customerCase) ||
       typeof rule.issueType !== "string" ||
       (rule.issueType !== allIssueTypes && !uniqueOptions.issueTypes.has(rule.issueType)) ||
@@ -77,6 +83,9 @@ function validateBadTicketConfig(body) {
     ]);
     if (seenRules.has(signature)) return "Kombinasi aturan tidak boleh duplikat.";
     seenRules.add(signature);
+  }
+  if (hasConflictingAllKipRules(body.rules)) {
+    return "Aturan All KIP Bad dan All KIP Tidak bad tidak boleh berlaku untuk kombinasi yang sama.";
   }
   return null;
 }

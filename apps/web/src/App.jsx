@@ -377,10 +377,14 @@ function App() {
       setTicketResult({ ...evaluation, label });
       return;
     }
+    if (!evaluation.isBadTicket) {
+      setTicketResult(evaluation);
+      return;
+    }
     const expectedKip = evaluation.expectedRule?.kip;
     let expectedText;
     if (evaluation.expectedRule?.special === "all-kips-bad") {
-      expectedText = `Kombinasi ini dinilai bad tiket untuk KIP apa pun.\n${evaluation.expectedRule.recommendation || ""}`;
+      expectedText = evaluation.expectedRule.recommendation || "";
     } else if (expectedKip) {
       expectedText = `Seharusnya dibuat di KIP: ${expectedKip}\n${evaluation.expectedRule.recommendation || "Gunakan KIP ini untuk kendala dan kondisi tersebut."}`;
     } else {

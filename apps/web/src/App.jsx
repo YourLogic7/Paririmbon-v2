@@ -805,10 +805,14 @@ function BadTicketAdminPanel({ config, onSave, onBack, localOnly }) {
           const values = [...new Set(draft.rules.flatMap((rule) =>
             field === "onuStatus" ? (rule.onuStatuses || [rule.onuStatus]).filter(Boolean) : [rule[field]].filter(Boolean)
           ))];
-          return <label className="bad-ticket-rule-filter" key={field}><span>{label}</span><select className="text-input" value={ruleFilters[field]} onChange={(event) => setRuleFilters((current) => ({ ...current, [field]: event.target.value }))}>
-            <option value="">{allLabel}</option>
-            {values.map((value) => <option key={value} value={value}>{value}</option>)}
-          </select></label>;
+          return <div className="bad-ticket-rule-filter" key={field}><label htmlFor={`rule-filter-${field}`}>{label}</label><SearchableSelect
+            id={`rule-filter-${field}`}
+            value={ruleFilters[field] || allLabel}
+            options={[allLabel, ...values]}
+            onChange={(value) => setRuleFilters((current) => ({ ...current, [field]: value === allLabel ? "" : value }))}
+            placeholder={allLabel}
+            compact
+          /></div>;
         })}
       </div>}
       <div className="bad-ticket-rules">

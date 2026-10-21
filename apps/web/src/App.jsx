@@ -377,8 +377,11 @@ function App() {
       setTicketResult({ ...evaluation, label });
       return;
     }
-    if (!evaluation.isBadTicket) {
-      setTicketResult(evaluation);
+    if (!evaluation.isBadTicket || !evaluation.expectedRule) {
+      setTicketResult({
+        ...evaluation,
+        isUnconfigured: evaluation.isBadTicket && !evaluation.expectedRule
+      });
       return;
     }
     const expectedKip = evaluation.expectedRule?.kip;
@@ -592,17 +595,21 @@ function BadTicketPanel({ config, submission, onEdit, result, onSubmit }) {
       <div className="assist-result-card">
         {!result ? <div className="result-empty"><span className="result-illustration"><BookPlus size={29} /></span><span className="section-kicker">HASIL PEMERIKSAAN</span><h3>Pastikan tiket<br /><em>sesuai aturan.</em></h3><p>Pilih KIP, case pelanggan, jenis kendala, dan status ONU untuk melihat hasil pemeriksaan serta redaksi rekomendasi.</p><span className="result-watermark">✳</span></div> : (
           <div className="result-content">
-            <div className="result-label"><span className="result-spark"><Sparkles size={13} /></span> HASIL PEMERIKSAAN <span className={`ticket-status ${result.isBadTicket ? "bad" : "good"}`}>{result.isBadTicket ? "BAD TIKET" : "BUKAN BAD TIKET"}</span></div>
-            <h3>{result.isBadTicket ? <>Tiket perlu<br /><em>diperbaiki.</em></> : <>Tiket sudah<br /><em>sesuai aturan.</em></>}</h3>
-            <p className="ticket-result-summary">{result.isBadTicket
+            <div className="result-label"><span className="result-spark"><Sparkles size={13} /></span> HASIL PEMERIKSAAN <span className={`ticket-status${result.isUnconfigured ? "" : ` ${result.isBadTicket ? "bad" : "good"}`}`}>{result.isUnconfigured ? "BELUM ADA KETENTUAN" : result.isBadTicket ? "BAD TIKET" : "BUKAN BAD TIKET"}</span></div>
+            <h3>{result.isUnconfigured
+              ? <>Kombinasi belum<br /><em>ada ketentuannya.</em></>
+              : result.isBadTicket ? <>Tiket perlu<br /><em>diperbaiki.</em></> : <>Tiket sudah<br /><em>sesuai aturan.</em></>}</h3>
+            <p className="ticket-result-summary">{result.isUnconfigured
+              ? "Belum ada ketentuannya, Mohon konfirm ke TL dulu yaaa, jangan lupa kasih tau Aku (With Love, Iky)"
+              : result.isBadTicket
               ? result.expectedRule?.special === "all-kips-bad"
                 ? "Kombinasi case pelanggan, jenis kendala, dan status ONU cocok dengan aturan All KIP pasti Bad."
                 : "Kombinasi KIP, case pelanggan, jenis kendala, dan status ONU tidak ditemukan pada aturan yang disetujui."
               : "Semua pilihan cocok dengan kombinasi aturan yang disetujui admin."}</p>
-            {result.isBadTicket && <div className="ticket-label-wrap"><label className="field-label" htmlFor="bad-ticket-label">Rekomendasi redaksi pelabelan</label>{result.formattedLabel
+            {result.isBadTicket && !result.isUnconfigured && <div className="ticket-label-wrap"><label className="field-label" htmlFor="bad-ticket-label">Rekomendasi redaksi pelabelan</label>{result.formattedLabel
               ? <div id="bad-ticket-label" className="text-input ticket-label ticket-label-preview" role="textbox" aria-readonly="true" tabIndex={0}>{result.label.split(/(SESUAIKAN)/g).map((part, index) => part === "SESUAIKAN" ? <strong className="ticket-label-emphasis" key={index}>{part}</strong> : part)}</div>
               : <textarea id="bad-ticket-label" className="text-input ticket-label" value={result.label} readOnly />}</div>}
-            {result.isBadTicket && result.expectedRule?.sourceLink && <a className="ticket-source-link" href={result.expectedRule.sourceLink} target="_blank" rel="noreferrer"><FileText size={14} /> Buka source KMS <ArrowRight size={14} /></a>}
+            {result.isBadTicket && !result.isUnconfigured && result.expectedRule?.sourceLink && <a className="ticket-source-link" href={result.expectedRule.sourceLink} target="_blank" rel="noreferrer"><FileText size={14} /> Buka source KMS <ArrowRight size={14} /></a>}
           </div>
         )}
         <div className="result-bottom"><span>✳</span> DIRANGKUM DARI PENGETAHUAN TIM</div>

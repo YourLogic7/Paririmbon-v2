@@ -19,7 +19,7 @@ const BAD_TICKET_HASHTAGS = [
 ];
 
 const app = express();
-app.use(express.json({ limit: "64kb" }));
+app.use(express.json({ limit: "256kb" }));
 
 function validateEntry(body) {
   const fields = ["id", "title", "category", "summary", "content"];
@@ -163,11 +163,12 @@ app.post("/api/auth/logout", requireAuth, async (request, response, next) => {
 app.get("/api/admin/accounts", requireAdmin, async (_request, response, next) => {
   try {
     await connectDatabase();
-    const accounts = await Account.find().select("username lastSeenAt").sort({ username: 1 }).lean();
+    const accounts = await Account.find().select("username displayName lastSeenAt").sort({ username: 1 }).lean();
     const onlineSince = new Date(Date.now() - 45_000);
     return response.json({
       accounts: accounts.map((account) => ({
         id: account.username,
+        name: account.displayName || account.username,
         online: account.lastSeenAt !== null && account.lastSeenAt >= onlineSince,
         lastSeenAt: account.lastSeenAt
       }))
@@ -178,20 +179,79 @@ app.get("/api/admin/accounts", requireAdmin, async (_request, response, next) =>
 });
 
 app.post("/api/admin/accounts", requireAdmin, async (request, response, next) => {
-  const { id, password } = request.body || {};
-  if (typeof id !== "string" || !/^[a-zA-Z0-9._-]{3,32}$/.test(id) ||
+  const { name, id, password } = request.body || {};
+  if (typeof name !== "string" || !name.trim() || name.trim().length > 100 ||
+    typeof id !== "string" || !/^[a-zA-Z0-9._-]{3,32}$/.test(id) ||
     typeof password !== "string" || password.length < 8 || password.length > 128) {
-    return response.status(400).json({ error: "ID harus 3–32 karakter (huruf, angka, titik, garis bawah, atau strip) dan kata sandi 8–128 karakter." });
+    return response.status(400).json({ error: "Nama wajib diisi (maksimal 100 karakter), ID harus 3–32 karakter (huruf, angka, titik, garis bawah, atau strip), dan kata sandi 8–128 karakter." });
   }
   try {
     await connectDatabase();
     const account = await Account.create({
+      displayName: name.trim(),
       username: id.toLowerCase(),
       passwordHash: await hashPassword(password)
     });
-    return response.status(201).json({ account: { id: account.username, online: false, lastSeenAt: null } });
+    return response.status(201).json({ account: { id: account.username, name: account.displayName, online: false, lastSeenAt: null } });
   } catch (error) {
     if (error.code === 11000) return response.status(409).json({ error: "ID akun sudah digunakan." });
+    return next(error);
+  }
+});
+
+app.post("/api/admin/accounts/import", requireAdmin, async (request, response, next) => {
+  const { accounts } = request.body || {};
+  if (!Array.isArray(accounts) || accounts.length === 0 || accounts.length > 200) {
+    return response.status(400).json({ error: "Impor harus berisi 1–200 akun." });
+  }
+  const seenIds = new Set();
+  for (const [index, account] of accounts.entries()) {
+    if (!account || typeof account.name !== "string" || !account.name.trim() || account.name.trim().length > 100 ||
+      typeof account.id !== "string" || !/^[a-zA-Z0-9._-]{3,32}$/.test(account.id) ||
+      typeof account.password !== "string" || account.password.length < 8 || account.password.length > 128) {
+      return response.status(400).json({ error: `Data akun pada baris ${index + 2} tidak valid. Pastikan nama, ID 3–32 karakter, dan kata sandi 8–128 karakter terisi.` });
+    }
+    const normalizedId = account.id.toLowerCase();
+    if (seenIds.has(normalizedId)) {
+      return response.status(400).json({ error: `ID akun "${account.id}" muncul lebih dari sekali di file.` });
+    }
+    seenIds.add(normalizedId);
+  }
+  try {
+    await connectDatabase();
+    const requestedIds = [...seenIds];
+    const existing = await Account.find({ username: { $in: requestedIds } }).select("username").lean();
+    const existingIds = new Set(existing.map((account) => account.username));
+    const candidates = accounts.filter((account) => !existingIds.has(account.id.toLowerCase()));
+    const skipped = accounts
+      .filter((account) => existingIds.has(account.id.toLowerCase()))
+      .map((account) => ({ id: account.id, name: account.name }));
+    let imported = [];
+    if (candidates.length) {
+      const documents = [];
+      for (let index = 0; index < candidates.length; index += 8) {
+        const batch = await Promise.all(candidates.slice(index, index + 8).map(async (account) => ({
+          displayName: account.name.trim(),
+          username: account.id.toLowerCase(),
+          passwordHash: await hashPassword(account.password)
+        })));
+        documents.push(...batch);
+      }
+      try {
+        const inserted = await Account.insertMany(documents, { ordered: false });
+        imported = inserted.map((account) => ({ id: account.username, name: account.displayName }));
+      } catch (error) {
+        if (!error.writeErrors?.every((writeError) => writeError.code === 11000)) throw error;
+        const insertedIds = error.insertedDocs.map((account) => account.username);
+        imported = error.insertedDocs.map((account) => ({ id: account.username, name: account.displayName }));
+        const insertedIdSet = new Set(insertedIds);
+        skipped.push(...candidates
+          .filter((account) => !insertedIdSet.has(account.id.toLowerCase()))
+          .map((account) => ({ id: account.id, name: account.name })));
+      }
+    }
+    return response.status(201).json({ imported, skipped });
+  } catch (error) {
     return next(error);
   }
 });

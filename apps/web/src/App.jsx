@@ -3,7 +3,8 @@ import {
   ArrowDownRight, ArrowRight, BookOpen, BookPlus, Check,
   ChevronDown, ChevronLeft, ChevronRight, CircleHelp, Clock3, Feather,
   FileText, Lightbulb, LockKeyhole, LogIn, LogOut, Moon, Pencil, Plus,
-  Search, ShieldCheck, Sparkles, Sun, Trash2, Users, UserRound, X
+  Download, FileSpreadsheet, Search, ShieldCheck, Sparkles, Sun, Trash2,
+  Upload, Users, UserRound, X
 } from "lucide-react";
 import {
   evaluateBadTicket,
@@ -23,6 +24,7 @@ const BAD_TICKET_STORAGE_KEY = "paririmbon.bad-ticket-config.v1";
 const THEME_STORAGE_KEY = "paririmbon.theme";
 const SESSION_STORAGE_KEY = "paririmbon.session.v1";
 const API = import.meta.env.VITE_API_URL || "";
+const MAX_IMPORT_ROWS = 200;
 const BAD_TICKET_HASHTAGS = [
   "#salah_kategori",
   "#salah_tujuan",
@@ -60,6 +62,88 @@ function readSavedSession() {
   } catch {
     return "";
   }
+}
+
+async function createAccountTemplate() {
+  const { default: writeExcelFile } = await import("write-excel-file/browser");
+  const header = ["Nama Pegawai", "User ID", "Password"].map((value) => ({ value, fontWeight: "bold" }));
+  const blankRow = ["", "", ""].map((value) => ({ value, type: String, format: "@" }));
+  const blob = await writeExcelFile([header, ...Array.from({ length: MAX_IMPORT_ROWS }, () => blankRow)], {
+    columns: [{ width: 30 }, { width: 24 }, { width: 24 }]
+  }).toBlob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "template-akun-pegawai.xlsx";
+  link.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function normalizeSpreadsheetHeader(value) {
+  return String(value || "").trim().toLocaleLowerCase("id").replace(/\s+/g, " ");
+}
+
+async function readAccountsFromWorkbook(file) {
+  if (!file.name.toLocaleLowerCase("id").endsWith(".xlsx")) {
+    throw new Error("Pilih file Excel .xlsx.");
+  }
+  if (file.size > 2 * 1024 * 1024) throw new Error("Ukuran file maksimal 2 MB.");
+
+  const { readSheet } = await import("read-excel-file/browser");
+  const rows = await readSheet(file);
+  if (!rows?.length) throw new Error("File Excel tidak memiliki sheet atau header.");
+  if (rows.length > 5000) throw new Error("File Excel terlalu banyak baris. Maksimal 200 akun.");
+
+  const headerAliases = {
+    name: ["nama pegawai", "nama", "employee name"],
+    id: ["user id", "userid", "id pengguna", "id akun", "id pegawai"],
+    password: ["password", "kata sandi"]
+  };
+  const columns = {};
+  rows[0].forEach((value, index) => {
+    const header = normalizeSpreadsheetHeader(value);
+    for (const [field, aliases] of Object.entries(headerAliases)) {
+      if (aliases.includes(header)) columns[field] = index;
+    }
+  });
+  if (Object.keys(columns).length !== 3) {
+    throw new Error("Header wajib: Nama Pegawai, User ID, dan Password. Unduh template untuk format yang benar.");
+  }
+
+  const accounts = [];
+  const seenIds = new Set();
+  for (let rowIndex = 1; rowIndex < rows.length; rowIndex += 1) {
+    const rowNumber = rowIndex + 1;
+    const row = rows[rowIndex];
+    const values = {};
+    for (const [field, column] of Object.entries(columns)) {
+      const value = row[column];
+      if (value === null || value === undefined || value === "") {
+        values[field] = "";
+      } else if (typeof value === "string" || (typeof value === "number" && Number.isFinite(value))) {
+        values[field] = String(value).trim();
+      } else {
+        throw new Error(`Baris ${rowNumber}: gunakan teks biasa untuk nama, User ID, dan password.`);
+      }
+    }
+    if (Object.values(values).every((value) => !value)) continue;
+    if (!values.name || values.name.length > 100) {
+      throw new Error(`Baris ${rowNumber}: nama pegawai wajib diisi (maksimal 100 karakter).`);
+    }
+    if (!/^[a-zA-Z0-9._-]{3,32}$/.test(values.id)) {
+      throw new Error(`Baris ${rowNumber}: User ID harus 3–32 karakter (huruf, angka, titik, garis bawah, atau strip).`);
+    }
+    if (values.password.length < 8 || values.password.length > 128) {
+      throw new Error(`Baris ${rowNumber}: password harus terdiri dari 8–128 karakter.`);
+    }
+    const normalizedId = values.id.toLowerCase();
+    if (seenIds.has(normalizedId)) throw new Error(`Baris ${rowNumber}: User ID "${values.id}" duplikat di dalam file.`);
+    seenIds.add(normalizedId);
+    accounts.push({ name: values.name, id: values.id, password: values.password });
+    if (accounts.length > MAX_IMPORT_ROWS) throw new Error("Maksimal 200 akun per impor.");
+  }
+  if (!accounts.length) throw new Error("Tidak ada data akun di file Excel.");
+  return accounts;
 }
 
 function readSavedEntries() {
@@ -699,8 +783,14 @@ function LoginScreen({ theme, onAuthenticated }) {
 
 function AccountAdminPanel({ token, onBack }) {
   const [accounts, setAccounts] = useState([]);
+  const [employeeName, setEmployeeName] = useState("");
   const [accountId, setAccountId] = useState("");
   const [password, setPassword] = useState("");
+  const [importCandidates, setImportCandidates] = useState([]);
+  const [importFileName, setImportFileName] = useState("");
+  const [importResult, setImportResult] = useState(null);
+  const [importing, setImporting] = useState(false);
+  const [templateLoading, setTemplateLoading] = useState(false);
   const [resetTarget, setResetTarget] = useState("");
   const [resetPassword, setResetPassword] = useState("");
   const [loading, setLoading] = useState(true);
@@ -757,14 +847,74 @@ function AccountAdminPanel({ token, onBack }) {
     setMessage("");
     setSaving(true);
     try {
-      await request("/api/admin/accounts", "POST", { id: accountId.trim(), password });
+      await request("/api/admin/accounts", "POST", {
+        name: employeeName.trim(),
+        id: accountId.trim(),
+        password
+      });
+      setEmployeeName("");
       setAccountId("");
       setPassword("");
-      setMessage(`Akun ${accountId.trim()} berhasil dibuat.`);
+      setMessage(`Akun ${employeeName.trim()} berhasil dibuat.`);
     } catch (requestError) {
       setError(requestError.message || "Gagal membuat akun.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function selectImportFile(event) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    setError("");
+    setMessage("");
+    setImportResult(null);
+    setImportCandidates([]);
+    setImportFileName("");
+    try {
+      const candidates = await readAccountsFromWorkbook(file);
+      setImportCandidates(candidates);
+      setImportFileName(file.name);
+    } catch (requestError) {
+      setError(requestError.message || "Gagal membaca file Excel.");
+    }
+  }
+
+  async function downloadTemplate() {
+    setError("");
+    setTemplateLoading(true);
+    try {
+      await createAccountTemplate();
+    } catch (requestError) {
+      setError(requestError.message || "Gagal membuat template Excel.");
+    } finally {
+      setTemplateLoading(false);
+    }
+  }
+
+  async function importAccounts() {
+    setError("");
+    setMessage("");
+    setImporting(true);
+    try {
+      const result = await request("/api/admin/accounts/import", "POST", { accounts: importCandidates });
+      setAccounts((current) => [
+        ...result.imported.map((account) => ({
+          ...account,
+          online: false,
+          lastSeenAt: null
+        })),
+        ...current.filter((account) => !result.imported.some((added) => added.id === account.id))
+      ]);
+      setImportResult(result);
+      setImportCandidates([]);
+      setImportFileName("");
+      setMessage(`${result.imported.length} akun berhasil diimpor${result.skipped.length ? `; ${result.skipped.length} ID dilewati karena sudah terdaftar` : ""}.`);
+    } catch (requestError) {
+      setError(requestError.message || "Gagal mengimpor akun.");
+    } finally {
+      setImporting(false);
     }
   }
 
@@ -807,11 +957,41 @@ function AccountAdminPanel({ token, onBack }) {
       <form className="account-create-form" onSubmit={createAccount}>
         <div className="account-form-heading"><UserRound size={16} /><div><b>Buat akun pegawai</b><span>ID 3–32 karakter, kata sandi minimal 8 karakter.</span></div></div>
         <div className="account-create-fields">
+          <label><span className="field-label">Nama pegawai</span><input className="text-input" value={employeeName} onChange={(event) => setEmployeeName(event.target.value)} placeholder="Nama lengkap" required maxLength={100} /></label>
           <label><span className="field-label">ID akun</span><input className="text-input" value={accountId} onChange={(event) => setAccountId(event.target.value)} placeholder="contoh: nama.tim" required minLength={3} maxLength={32} pattern="[a-zA-Z0-9._-]+" /></label>
           <label><span className="field-label">Kata sandi awal</span><input className="text-input" type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Minimal 8 karakter" required minLength={8} maxLength={128} autoComplete="new-password" /></label>
           <button className="primary-action" type="submit" disabled={saving}><Plus size={15} /> Buat akun</button>
         </div>
       </form>
+      <div className="account-import">
+        <div className="account-form-heading"><FileSpreadsheet size={16} /><div><b>Impor dari Excel</b><span>File .xlsx, maksimal 200 akun per impor.</span></div></div>
+        <div className="account-import-actions">
+          <button className="rule-edit-button" type="button" onClick={downloadTemplate} disabled={templateLoading}>
+            <Download size={14} /> {templateLoading ? "Membuat template..." : "Unduh template"}
+          </button>
+          <label className="rule-edit-button account-file-label">
+            <Upload size={14} /> Pilih file Excel
+            <input className="account-file-input" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={selectImportFile} />
+          </label>
+        </div>
+        {importFileName && <div className="account-import-preview">
+          <div className="account-import-file"><FileSpreadsheet size={14} /><span>{importFileName}</span><b>{importCandidates.length} akun</b></div>
+          <div className="account-import-list">
+            {importCandidates.slice(0, 5).map((account) => <span key={account.id}>{account.name} <small>({account.id})</small></span>)}
+            {importCandidates.length > 5 && <small>dan {importCandidates.length - 5} akun lainnya</small>}
+          </div>
+          <p>Kata sandi tidak ditampilkan. Akun dengan ID yang sudah terdaftar akan dilewati.</p>
+          <div className="account-import-confirm">
+            <button type="button" className="close-book-button" onClick={() => { setImportCandidates([]); setImportFileName(""); }}>Batal</button>
+            <button type="button" className="primary-action" onClick={importAccounts} disabled={importing}>
+              <Upload size={14} /> {importing ? "Mengimpor..." : `Impor ${importCandidates.length} akun`}
+            </button>
+          </div>
+        </div>}
+        {importResult?.skipped?.length > 0 && <div className="account-import-skipped">
+          <b>ID dilewati karena sudah terdaftar:</b> {importResult.skipped.map((account) => `${account.name} (${account.id})`).join(", ")}
+        </div>}
+      </div>
       {loadError && <div className="form-error account-message" role="alert">{loadError}</div>}
       {error && <div className="form-error account-message" role="alert">{error}</div>}
       {message && <div className="account-success" role="status">{message}</div>}
@@ -821,7 +1001,7 @@ function AccountAdminPanel({ token, onBack }) {
           <div className="account-entry" key={account.id}>
             <div className="account-entry-main">
               <span className={`account-status${account.online ? " online" : ""}`} />
-              <div><b>{account.id}</b><span className={`account-presence${account.online ? " online" : ""}`}>{account.online ? "Online sekarang" : "Offline"}</span></div>
+              <div><b>{account.name || account.id}</b><span className="account-username">{account.id}</span><span className={`account-presence${account.online ? " online" : ""}`}>{account.online ? "Online sekarang" : "Offline"}</span></div>
               <small>{account.online ? "Aktif" : account.lastSeenAt ? `Terakhir aktif ${new Intl.DateTimeFormat("id-ID", { dateStyle: "medium", timeStyle: "short" }).format(new Date(account.lastSeenAt))}` : "Belum pernah masuk"}</small>
             </div>
             <div className="account-actions">

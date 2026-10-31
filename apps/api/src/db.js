@@ -37,6 +37,7 @@ export const BadTicketConfig = mongoose.models.BadTicketConfig ||
 
 const accountSchema = new mongoose.Schema({
   username: { type: String, required: true, unique: true, trim: true, lowercase: true, minlength: 3, maxlength: 32 },
+  displayName: { type: String, trim: true, maxlength: 100, default: "" },
   passwordHash: { type: String, required: true, select: false },
   sessionVersion: { type: Number, default: 0 },
   lastSeenAt: { type: Date, default: null }

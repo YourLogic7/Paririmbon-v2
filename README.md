@@ -9,18 +9,18 @@ npm install
 npm run dev
 ```
 
-Vite berjalan di `http://localhost:5173`, API di `http://localhost:3001`. Salin `.env.example` ke `.env` dan isi `MONGODB_URI`, `ADMIN_PASSWORD`, serta `JWT_SECRET` untuk mengaktifkan persistensi database dan login admin. `JWT_SECRET` harus berupa rahasia acak dengan panjang minimal 32 karakter. Tanpa konfigurasi MongoDB, buku tetap bisa dicoba dengan data contoh yang disimpan di browser. Untuk mode demo admin lokal, gunakan kata sandi `admin123` saat menjalankan Vite dalam mode development; mode ini tidak aktif pada production.
+Vite berjalan di `http://localhost:5173`, API di `http://localhost:3001`. Salin `.env.example` ke `.env` dan isi `MONGODB_URI`, `ADMIN_PASSWORD`, serta `JWT_SECRET`. `JWT_SECRET` harus berupa rahasia acak dengan panjang minimal 32 karakter. Pegawai masuk menggunakan ID dan kata sandi yang dibuat admin; admin masuk hanya menggunakan `ADMIN_PASSWORD`. Setelah masuk, admin dapat membuat, menghapus, dan mengatur ulang kata sandi akun serta memantau status online dari menu **Kelola akun**. Status online diperbarui setiap 5 detik, langsung offline saat keluar, dan dianggap offline setelah 45 detik tanpa aktivitas. Login dan akses konten memerlukan API serta MongoDB yang terkonfigurasi.
 
 ## Fitur
 
 - Buku digital dengan sampul yang dapat dibuka/tutup, daftar isi, pencarian, navigasi halaman, dan tata letak responsif.
-- Admin dapat menambah, menyunting, dan menghapus halaman. Perubahan admin tersimpan ke MongoDB melalui API; bila API tidak tersedia, UI memberi tahu bahwa perubahan hanya tersimpan pada perangkat ini.
+- Login wajib untuk membuka aplikasi. Pegawai hanya dapat membaca pengetahuan dan menggunakan pemeriksa bad tiket; admin dapat mengelola akun tim, memantau status online, serta menyunting isi buku dan konfigurasi.
 - Pemeriksa bad tiket memvalidasi KIP, case pelanggan, jenis kendala, dan status ONU terhadap kombinasi yang disetujui. Pada editor aturan, **“all jenis kendala”** mencocokkan Fisik maupun Logik; opsi pemeriksa pegawai tetap hanya Fisik dan Logik. Status ONU **“Tidak ada keterangan ONU ketika pelaporan”** otomatis menghasilkan rekomendasi bad tiket mandatory, sedangkan status dengan hashtag **#NOACS** tidak dianggap bad tiket. Admin dapat menyunting daftar dropdown serta mengatur redaksi rekomendasi, source link KMS, dan hashtag (`#salah_kategori`, `#salah_tujuan`, `#mandatori_tidak_lengkap`, `#non_eskalasi`) di setiap aturan dari menu **Edit bad tiket**. Seluruh konfigurasi disimpan di MongoDB dan API mengirim konfigurasi yang sama ke halaman pemeriksa pegawai.
-- REST API: `GET /api/entries`, `POST /api/auth/login`, `POST /api/entries`, `PUT /api/entries/:id`, `DELETE /api/entries/:id`, `GET /api/bad-ticket-config`, `PUT /api/bad-ticket-config` (admin), `GET /api/health`.
+- REST API: `POST /api/auth/login`, `GET /api/auth/me`, `POST /api/auth/presence`, `POST /api/auth/logout`, `GET /api/entries`, `GET /api/bad-ticket-config`, `POST /api/assist` (semuanya perlu login); `GET/POST /api/admin/accounts`, `PUT /api/admin/accounts/:id/password`, `DELETE /api/admin/accounts/:id`, `POST /api/entries`, `PUT/DELETE /api/entries/:id`, dan `PUT /api/bad-ticket-config` (khusus admin); `GET /api/health`.
 
 ## Deploy ke Vercel
 
-Impor repository ke Vercel dari direktori root monorepo, lalu tambahkan environment variables `MONGODB_URI`, `ADMIN_PASSWORD`, dan `JWT_SECRET` di project settings untuk setiap environment yang digunakan. Vercel menggunakan `vercel.json` untuk membangun `apps/web/dist` dan menyajikan API dari direktori root `api/`. Saat pertama kali API membaca database kosong, halaman contoh akan disalin ke MongoDB; perubahan dari halaman lokal yang belum tersimpan juga akan dibuat di server saat disunting. Pastikan MongoDB Atlas mengizinkan koneksi dari deployment Vercel. Setelah menambahkan environment variables, redeploy project.
+Impor repository ke Vercel dari direktori root monorepo, lalu tambahkan environment variables `MONGODB_URI`, `ADMIN_PASSWORD`, dan `JWT_SECRET` di project settings untuk setiap environment yang digunakan. Vercel menggunakan `vercel.json` untuk membangun `apps/web/dist` dan menyajikan API dari direktori root `api/`. Saat pertama kali API membaca database kosong, halaman contoh akan disalin ke MongoDB. Pastikan MongoDB Atlas mengizinkan koneksi dari deployment Vercel. Setelah menambahkan environment variables, redeploy project.
 
 ## Pemeriksaan
 

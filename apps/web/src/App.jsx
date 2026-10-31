@@ -3,7 +3,7 @@ import {
   ArrowDownRight, ArrowRight, BookOpen, BookPlus, Check,
   ChevronDown, ChevronLeft, ChevronRight, CircleHelp, Clock3, Feather,
   FileText, Lightbulb, LockKeyhole, LogIn, LogOut, Moon, Pencil, Plus,
-  Search, ShieldCheck, Sparkles, Sun, Trash2, X
+  Search, ShieldCheck, Sparkles, Sun, Trash2, Users, UserRound, X
 } from "lucide-react";
 import {
   evaluateBadTicket,
@@ -21,6 +21,7 @@ import {
 const STORAGE_KEY = "paririmbon.entries.v1";
 const BAD_TICKET_STORAGE_KEY = "paririmbon.bad-ticket-config.v1";
 const THEME_STORAGE_KEY = "paririmbon.theme";
+const SESSION_STORAGE_KEY = "paririmbon.session.v1";
 const API = import.meta.env.VITE_API_URL || "";
 const BAD_TICKET_HASHTAGS = [
   "#salah_kategori",
@@ -50,6 +51,14 @@ function readSavedTheme() {
     return localStorage.getItem(THEME_STORAGE_KEY) === "dark" ? "dark" : "light";
   } catch {
     return "light";
+  }
+}
+
+function readSavedSession() {
+  try {
+    return sessionStorage.getItem(SESSION_STORAGE_KEY) || "";
+  } catch {
+    return "";
   }
 }
 
@@ -210,16 +219,46 @@ function App() {
   const [bookOpen, setBookOpen] = useState(false);
   const [assistOpen, setAssistOpen] = useState(false);
   const [badTicketAdminOpen, setBadTicketAdminOpen] = useState(false);
+  const [accountsAdminOpen, setAccountsAdminOpen] = useState(false);
   const [badTicketConfig, setBadTicketConfig] = useState(readSavedBadTicketConfig);
   const [ticketSubmission, setTicketSubmission] = useState({ kip: "", customerCase: "", issueType: "", onuStatus: "", caseId: "", incident: "", ihNumber: "" });
   const [ticketResult, setTicketResult] = useState(null);
   const [admin, setAdmin] = useState(false);
   const [token, setToken] = useState("");
-  const [authOpen, setAuthOpen] = useState(false);
-  const [authError, setAuthError] = useState("");
-  const [password, setPassword] = useState("");
+  const [sessionChecking, setSessionChecking] = useState(true);
   const [editing, setEditing] = useState(undefined);
   const [toast, setToast] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    const savedToken = readSavedSession();
+    if (!savedToken) {
+      setSessionChecking(false);
+      return undefined;
+    }
+    fetch(`${API}/api/auth/me`, { headers: { Authorization: `Bearer ${savedToken}` } })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Sesi tidak valid.");
+        return response.json();
+      })
+      .then((data) => {
+        if (cancelled) return;
+        setToken(savedToken);
+        setAdmin(data.role === "admin");
+      })
+      .catch(() => {
+        try {
+          sessionStorage.removeItem(SESSION_STORAGE_KEY);
+        } catch {
+          // Session storage can be unavailable in restricted browser contexts.
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setSessionChecking(false);
+      });
+    return () => { cancelled = true; };
+  }, []);
+
   useEffect(() => {
     localStorage.setItem(THEME_STORAGE_KEY, theme);
   }, [theme]);
@@ -234,22 +273,58 @@ function App() {
   }, [badTicketConfig]);
 
   useEffect(() => {
-    fetch(`${API}/api/entries`)
-      .then((response) => response.ok ? response.json() : null)
+    if (!token) return undefined;
+    let cancelled = false;
+    const headers = { Authorization: `Bearer ${token}` };
+    fetch(`${API}/api/entries`, { headers })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(await getResponseError(response, "Gagal memuat halaman"));
+        return response.json();
+      })
       .then((data) => {
-        if (data?.entries?.length) {
-          setEntries(data.entries);
-          setActiveId((current) => data.entries.some((entry) => entry.id === current) ? current : data.entries[0].id);
+        if (cancelled || !data.entries?.length) return;
+        setEntries(data.entries);
+        setActiveId((current) => data.entries.some((entry) => entry.id === current) ? current : data.entries[0].id);
+      })
+      .catch((error) => { if (!cancelled) setToast(error.message); });
+    fetch(`${API}/api/bad-ticket-config`, { headers })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(await getResponseError(response, "Gagal memuat konfigurasi"));
+        return response.json();
+      })
+      .then((data) => {
+        if (!cancelled && data.config) setBadTicketConfig(normalizeBadTicketConfig(data.config));
+      })
+      .catch((error) => { if (!cancelled) setToast(error.message); });
+    return () => { cancelled = true; };
+  }, [token]);
+
+  useEffect(() => {
+    if (!token) return undefined;
+    async function updatePresence() {
+      try {
+        const response = await fetch(`${API}/api/auth/presence`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (response.status === 401) {
+          try {
+            sessionStorage.removeItem(SESSION_STORAGE_KEY);
+          } catch {
+            // Session storage can be unavailable in restricted browser contexts.
+          }
+          setToken("");
+          setAdmin(false);
+          setAccountsAdminOpen(false);
         }
-      })
-      .catch(() => {});
-    fetch(`${API}/api/bad-ticket-config`)
-      .then((response) => response.ok ? response.json() : null)
-      .then((data) => {
-        if (data?.config) setBadTicketConfig(normalizeBadTicketConfig(data.config));
-      })
-      .catch(() => {});
-  }, []);
+      } catch {
+        // A temporary network error should not end an otherwise valid session.
+      }
+    }
+    updatePresence();
+    const timer = window.setInterval(updatePresence, 15_000);
+    return () => window.clearInterval(timer);
+  }, [token]);
 
   useEffect(() => {
     if (!toast) return undefined;
@@ -263,34 +338,32 @@ function App() {
   const activeEntry = entries.find((entry) => entry.id === activeId) || entries[0];
   const activeIndex = entries.findIndex((entry) => entry.id === activeId);
 
-  async function login(event) {
-    event.preventDefault();
-    setAuthError("");
-    try {
-      const response = await fetch(`${API}/api/auth/login`, {
+  function logout() {
+    if (token) {
+      fetch(`${API}/api/auth/logout`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password })
-      });
-      if (!response.ok) throw new Error("Kata sandi admin tidak sesuai.");
-      const data = await response.json();
-      setToken(data.token);
-      setAdmin(true);
-      setAuthOpen(false);
-      setPassword("");
-      setToast("Mode editor aktif");
-      return;
-    } catch (error) {
-      if (import.meta.env.DEV && password === "admin123") {
-        setToken("");
-        setAdmin(true);
-        setAuthOpen(false);
-        setPassword("");
-        setToast("Mode demo admin aktif — perubahan tersimpan di perangkat ini");
-        return;
-      }
-      setAuthError(error.message || "Layanan admin belum tersedia.");
+        headers: { Authorization: `Bearer ${token}` },
+        keepalive: true
+      }).then((response) => {
+        if (!response.ok && response.status !== 401) console.warn("Paririmbon logout presence update failed:", response.status);
+      }).catch((error) => console.warn("Paririmbon logout presence update failed:", error.message));
     }
+    try {
+      sessionStorage.removeItem(SESSION_STORAGE_KEY);
+    } catch {
+      // Session storage can be unavailable in restricted browser contexts.
+    }
+    setToken("");
+    setAdmin(false);
+    setAccountsAdminOpen(false);
+    setBadTicketAdminOpen(false);
+    setEditing(undefined);
+  }
+
+  function acceptSession(session) {
+    setToken(session.token);
+    setAdmin(session.role === "admin");
+    setSessionChecking(false);
   }
 
   async function saveEntry(entry) {
@@ -429,6 +502,11 @@ function App() {
     setToast("Konfigurasi bad tiket tersimpan di perangkat ini saja");
   }
 
+  if (sessionChecking) {
+    return <div className="app-shell session-loading" data-theme={theme}><span className="live-dot" /> Memeriksa sesi...</div>;
+  }
+  if (!token) return <LoginScreen theme={theme} onAuthenticated={acceptSession} />;
+
   return (
     <div className="app-shell" data-theme={theme}>
       <header className="topbar">
@@ -442,27 +520,22 @@ function App() {
             <button type="button" className={theme === "light" ? "selected" : ""} aria-pressed={theme === "light"} onClick={() => setTheme("light")}><Sun size={13} /><span>Light</span></button>
             <button type="button" className={theme === "dark" ? "selected" : ""} aria-pressed={theme === "dark"} onClick={() => setTheme("dark")}><Moon size={13} /><span>Dark</span></button>
           </div>
-          <button className={`assist-nav ${assistOpen && !badTicketAdminOpen ? "selected" : ""}`} onClick={() => { setAssistOpen((value) => !value); setBadTicketAdminOpen(false); setTicketResult(null); }}>
+          <button className={`assist-nav ${assistOpen && !badTicketAdminOpen && !accountsAdminOpen ? "selected" : ""}`} onClick={() => { setAssistOpen((value) => !value); setBadTicketAdminOpen(false); setAccountsAdminOpen(false); setTicketResult(null); }}>
             <Sparkles size={15} /> Bad tiket
           </button>
-          {admin ? (
-            <button className="admin-button active" onClick={() => { setAdmin(false); setToken(""); setBadTicketAdminOpen(false); setToast("Kamu telah keluar dari mode editor"); }}>
-              <ShieldCheck size={15} /> <span>Editor</span><LogOut size={13} />
-            </button>
-          ) : (
-            <button className="admin-button" onClick={() => { setAuthOpen(true); setAuthError(""); }}>
-              <LockKeyhole size={15} /> <span>Admin</span>
-            </button>
-          )}
+          <button className={`admin-button${admin ? " active" : ""}`} onClick={logout}>
+            <LogOut size={14} /><span>Keluar</span>
+          </button>
         </div>
       </header>
 
       <main className="workspace">
         <aside className="left-rail">
           <div className="rail-label">RUANG BACA</div>
-          <button className={`rail-item ${!assistOpen && !badTicketAdminOpen ? "current" : ""}`} onClick={() => { setAssistOpen(false); setBadTicketAdminOpen(false); }}><BookOpen size={17} /><span>Buku panduan</span><span className="rail-count">{entries.length}</span></button>
-          <button className={`rail-item ${assistOpen && !badTicketAdminOpen ? "current" : ""}`} onClick={() => { setAssistOpen(true); setBadTicketAdminOpen(false); }}><Sparkles size={17} /><span>Bad tiket</span><span className="rail-new">TOOLS</span></button>
-          {admin && <button className={`rail-item ${badTicketAdminOpen ? "current" : ""}`} onClick={() => { setAssistOpen(true); setBadTicketAdminOpen(true); }}><Pencil size={16} /><span>Edit bad tiket</span></button>}
+          <button className={`rail-item ${!assistOpen && !badTicketAdminOpen && !accountsAdminOpen ? "current" : ""}`} onClick={() => { setAssistOpen(false); setBadTicketAdminOpen(false); setAccountsAdminOpen(false); }}><BookOpen size={17} /><span>Buku panduan</span><span className="rail-count">{entries.length}</span></button>
+          <button className={`rail-item ${assistOpen && !badTicketAdminOpen && !accountsAdminOpen ? "current" : ""}`} onClick={() => { setAssistOpen(true); setBadTicketAdminOpen(false); setAccountsAdminOpen(false); }}><Sparkles size={17} /><span>Bad tiket</span><span className="rail-new">TOOLS</span></button>
+          {admin && <button className={`rail-item ${assistOpen && badTicketAdminOpen ? "current" : ""}`} onClick={() => { setAssistOpen(true); setBadTicketAdminOpen(true); setAccountsAdminOpen(false); }}><Pencil size={16} /><span>Edit bad tiket</span></button>}
+          {admin && <button className={`rail-item ${accountsAdminOpen ? "current" : ""}`} onClick={() => { setAssistOpen(false); setBadTicketAdminOpen(false); setAccountsAdminOpen(true); }}><Users size={16} /><span>Kelola akun</span></button>}
           <div className="rail-rule" />
           <div className="rail-label rail-label-spaced">TENTANG BUKU INI</div>
           <div className="book-meta"><span className="meta-icon"><Feather size={15} /></span><div><b>Paririmbon</b><small>Pengetahuan produk</small></div></div>
@@ -474,14 +547,16 @@ function App() {
         <section className="reading-area">
           <div className="page-heading">
             <div>
-              <div className="eyebrow"><span>PERPUSTAKAAN</span><ChevronRight size={13} /> {badTicketAdminOpen ? "PENGELOLAAN BAD TIKET" : assistOpen ? "PEMERIKSA BAD TIKET" : "PANDUAN PRODUK"}</div>
-              <h1>{badTicketAdminOpen ? <>Atur <em>aturan tiket.</em></> : assistOpen ? <>Periksa <em>bad tiket.</em></> : <>Buku kecil, <em>jawaban besar.</em></>}</h1>
-              <p>{badTicketAdminOpen ? "Kelola opsi dropdown dan kombinasi yang dinilai sesuai." : assistOpen ? "Isi detail pelaporan untuk memeriksa kesesuaian KIP." : "Semua yang perlu kamu tahu, tersimpan rapi di sini."}</p>
+              <div className="eyebrow"><span>PERPUSTAKAAN</span><ChevronRight size={13} /> {accountsAdminOpen ? "PENGELOLAAN AKUN" : badTicketAdminOpen ? "PENGELOLAAN BAD TIKET" : assistOpen ? "PEMERIKSA BAD TIKET" : "PANDUAN PRODUK"}</div>
+              <h1>{accountsAdminOpen ? <>Kelola <em>akun tim.</em></> : badTicketAdminOpen ? <>Atur <em>aturan tiket.</em></> : assistOpen ? <>Periksa <em>bad tiket.</em></> : <>Buku kecil, <em>jawaban besar.</em></>}</h1>
+              <p>{accountsAdminOpen ? "Buat akun dan pantau anggota tim yang sedang online." : badTicketAdminOpen ? "Kelola opsi dropdown dan kombinasi yang dinilai sesuai." : assistOpen ? "Isi detail pelaporan untuk memeriksa kesesuaian KIP." : "Semua yang perlu kamu tahu, tersimpan rapi di sini."}</p>
             </div>
-            {admin && !assistOpen && <button className="add-button" onClick={() => setEditing(null)}><Plus size={16} /> Tulis halaman</button>}
+            {admin && !assistOpen && !accountsAdminOpen && <button className="add-button" onClick={() => setEditing(null)}><Plus size={16} /> Tulis halaman</button>}
           </div>
 
-          {assistOpen ? (
+          {accountsAdminOpen ? (
+            <AccountAdminPanel token={token} onBack={() => setAccountsAdminOpen(false)} />
+          ) : assistOpen ? (
             badTicketAdminOpen
               ? <BadTicketAdminPanel config={badTicketConfig} onSave={saveBadTicketConfig} onBack={() => setBadTicketAdminOpen(false)} localOnly={!token} />
               : <BadTicketPanel config={badTicketConfig} submission={ticketSubmission} onEdit={(field, value) => { setTicketSubmission((current) => ({ ...current, [field]: value })); setTicketResult(null); }} result={ticketResult} onSubmit={evaluateTicket} />
@@ -540,22 +615,229 @@ function App() {
               )}
             </div>
           )}
-          <div className="bottom-caption"><span><CircleHelp size={14} /> Ada yang perlu diperbarui?</span><button onClick={() => admin ? setEditing(null) : setAuthOpen(true)}>{admin ? "Tambahkan pengetahuan" : "Hubungi admin"} <ArrowRight size={13} /></button><span className="caption-spacer" /> <span className="page-ornament">✳</span></div>
+          <div className="bottom-caption"><span><CircleHelp size={14} /> {admin ? "Ada yang perlu diperbarui?" : "Sesi aktif"}</span><button onClick={() => admin ? setEditing(null) : logout()}>{admin ? "Tambahkan pengetahuan" : "Keluar dari akun"} <ArrowRight size={13} /></button><span className="caption-spacer" /> <span className="page-ornament">✳</span></div>
         </section>
       </main>
-
-      {authOpen && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setAuthOpen(false); }}><form className="auth-modal" onSubmit={login}>
-        <button type="button" className="modal-close" onClick={() => setAuthOpen(false)} aria-label="Tutup"><X size={17} /></button>
-        <span className="modal-icon"><LockKeyhole size={21} /></span><span className="section-kicker">AKSES TERBATAS</span><h2>Ruang editor.</h2><p>Masuk untuk merawat dan menambahkan pengetahuan di dalam buku.</p>
-        <label className="field-label" htmlFor="admin-password">Kata sandi admin</label><input autoFocus id="admin-password" className="text-input" type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Masukkan kata sandi" required />
-        {authError && <div className="form-error">{authError}</div>}
-        <button className="primary-action" type="submit"><LogIn size={16} /> Masuk sebagai admin</button>
-        {import.meta.env.DEV && <span className="demo-hint">Mode demo lokal: gunakan <code>admin123</code></span>}
-      </form></div>}
 
       {editing !== undefined && <EntryEditor entry={editing} onClose={() => setEditing(undefined)} onSave={saveEntry} localOnly={!token} />}
       {toast && <div className="toast"><Check size={16} /> {toast}</div>}
     </div>
+  );
+}
+
+function LoginScreen({ theme, onAuthenticated }) {
+  const [mode, setMode] = useState("user");
+  const [accountId, setAccountId] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  async function submit(event) {
+    event.preventDefault();
+    setError("");
+    setSubmitting(true);
+    try {
+      const response = await fetch(`${API}/api/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accountId: mode === "user" ? accountId.trim() : "", password })
+      });
+      if (!response.ok) throw new Error(await getResponseError(response, "Gagal masuk"));
+      const session = await response.json();
+      sessionStorage.setItem(SESSION_STORAGE_KEY, session.token);
+      onAuthenticated(session);
+    } catch (requestError) {
+      setError(requestError.message || "Layanan login tidak tersedia. Periksa koneksi lalu coba lagi.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="app-shell login-shell" data-theme={theme}>
+      <header className="login-topbar">
+        <a className="brand" href="#" onClick={(event) => event.preventDefault()}>
+          <span className="brand-mark"><BookOpen size={19} strokeWidth={1.8} /></span>
+          <span>paririmbon<span className="brand-dot">.</span><small>BUKU PENGETAHUAN TIM</small></span>
+        </a>
+        <span className="login-private"><LockKeyhole size={13} /> Akses terbatas untuk tim</span>
+      </header>
+      <main className="login-main">
+        <div className="login-card">
+          <span className="login-emblem"><BookOpen size={22} /></span>
+          <span className="section-kicker">SELAMAT DATANG KEMBALI</span>
+          <h1>Masuk ke <em>Paririmbon.</em></h1>
+          <p>Gunakan akun tim untuk membuka buku pengetahuan dan alat kerja.</p>
+          <div className="login-modes" role="tablist" aria-label="Jenis akun">
+            <button type="button" className={mode === "user" ? "selected" : ""} role="tab" aria-selected={mode === "user"} onClick={() => { setMode("user"); setError(""); }}>
+              <UserRound size={15} /> Pegawai
+            </button>
+            <button type="button" className={mode === "admin" ? "selected" : ""} role="tab" aria-selected={mode === "admin"} onClick={() => { setMode("admin"); setError(""); }}>
+              <ShieldCheck size={15} /> Admin
+            </button>
+          </div>
+          <form onSubmit={submit}>
+            {mode === "user" && <>
+              <label className="field-label" htmlFor="login-id">ID akun</label>
+              <input autoFocus id="login-id" className="text-input" value={accountId} onChange={(event) => setAccountId(event.target.value)} placeholder="Masukkan ID akun" autoComplete="username" required maxLength={32} />
+            </>}
+            <label className="field-label login-password-label" htmlFor="login-password">{mode === "admin" ? "Kata sandi admin" : "Kata sandi"}</label>
+            <input id="login-password" className="text-input" type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Masukkan kata sandi" autoComplete="current-password" required maxLength={128} />
+            {mode === "admin" && <span className="login-hint">Admin masuk menggunakan kata sandi yang telah dikonfigurasi.</span>}
+            {error && <div className="form-error" role="alert">{error}</div>}
+            <button className="primary-action login-submit" type="submit" disabled={submitting}>
+              <LogIn size={16} /> {submitting ? "Memeriksa..." : "Masuk"}
+            </button>
+          </form>
+          <div className="login-footer"><ShieldCheck size={13} /> Sesi login aman dan akan berakhir setelah 8 jam.</div>
+        </div>
+        <div className="login-decoration"><span>✳</span><p>Pengetahuan terbaik<br />adalah yang dibagikan.</p></div>
+      </main>
+    </div>
+  );
+}
+
+function AccountAdminPanel({ token, onBack }) {
+  const [accounts, setAccounts] = useState([]);
+  const [accountId, setAccountId] = useState("");
+  const [password, setPassword] = useState("");
+  const [resetTarget, setResetTarget] = useState("");
+  const [resetPassword, setResetPassword] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [loadError, setLoadError] = useState("");
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    async function refreshAccounts() {
+      try {
+        const response = await fetch(`${API}/api/admin/accounts`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (!response.ok) throw new Error(await getResponseError(response, "Gagal memuat akun"));
+        const data = await response.json();
+        if (!cancelled) {
+          setAccounts(data.accounts);
+          setLoadError("");
+          setLoading(false);
+        }
+      } catch (requestError) {
+        if (!cancelled) {
+          setLoadError(requestError.message || "Gagal memuat akun.");
+          setLoading(false);
+        }
+      }
+    }
+    refreshAccounts();
+    const timer = window.setInterval(refreshAccounts, 5000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [token]);
+
+  async function request(path, method, body) {
+    const response = await fetch(`${API}${path}`, {
+      method,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        ...(body ? { "Content-Type": "application/json" } : {})
+      },
+      ...(body ? { body: JSON.stringify(body) } : {})
+    });
+    if (!response.ok) throw new Error(await getResponseError(response, "Server menolak perubahan"));
+    return response.status === 204 ? null : response.json();
+  }
+
+  async function createAccount(event) {
+    event.preventDefault();
+    setError("");
+    setMessage("");
+    setSaving(true);
+    try {
+      await request("/api/admin/accounts", "POST", { id: accountId.trim(), password });
+      setAccountId("");
+      setPassword("");
+      setMessage(`Akun ${accountId.trim()} berhasil dibuat.`);
+    } catch (requestError) {
+      setError(requestError.message || "Gagal membuat akun.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function changePassword(event) {
+    event.preventDefault();
+    setError("");
+    setMessage("");
+    setSaving(true);
+    try {
+      await request(`/api/admin/accounts/${encodeURIComponent(resetTarget)}/password`, "PUT", { password: resetPassword });
+      setMessage(`Kata sandi akun ${resetTarget} berhasil diperbarui.`);
+      setResetTarget("");
+      setResetPassword("");
+    } catch (requestError) {
+      setError(requestError.message || "Gagal memperbarui kata sandi.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function deleteAccount(id) {
+    if (!window.confirm(`Hapus akun ${id}? Pengguna ini akan langsung kehilangan akses.`)) return;
+    setError("");
+    setMessage("");
+    try {
+      await request(`/api/admin/accounts/${encodeURIComponent(id)}`, "DELETE");
+      setAccounts((current) => current.filter((account) => account.id !== id));
+      setMessage(`Akun ${id} berhasil dihapus.`);
+    } catch (requestError) {
+      setError(requestError.message || "Gagal menghapus akun.");
+    }
+  }
+
+  return (
+    <section className="account-admin">
+      <div className="account-admin-intro">
+        <div><span className="section-kicker">ADMINISTRASI TIM</span><h2>Akun dan aktivitas.</h2><p>Status online diperbarui otomatis setiap beberapa detik.</p></div>
+        <button className="close-book-button" type="button" onClick={onBack}><ChevronLeft size={15} /> Kembali ke buku</button>
+      </div>
+      <form className="account-create-form" onSubmit={createAccount}>
+        <div className="account-form-heading"><UserRound size={16} /><div><b>Buat akun pegawai</b><span>ID 3–32 karakter, kata sandi minimal 8 karakter.</span></div></div>
+        <div className="account-create-fields">
+          <label><span className="field-label">ID akun</span><input className="text-input" value={accountId} onChange={(event) => setAccountId(event.target.value)} placeholder="contoh: nama.tim" required minLength={3} maxLength={32} pattern="[a-zA-Z0-9._-]+" /></label>
+          <label><span className="field-label">Kata sandi awal</span><input className="text-input" type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Minimal 8 karakter" required minLength={8} maxLength={128} autoComplete="new-password" /></label>
+          <button className="primary-action" type="submit" disabled={saving}><Plus size={15} /> Buat akun</button>
+        </div>
+      </form>
+      {loadError && <div className="form-error account-message" role="alert">{loadError}</div>}
+      {error && <div className="form-error account-message" role="alert">{error}</div>}
+      {message && <div className="account-success" role="status">{message}</div>}
+      <div className="account-list-heading"><div><span className="section-kicker">PRESENSI REALTIME</span><h3>Anggota tim <span>({accounts.filter((account) => account.online).length} online)</span></h3></div><span className="account-refresh"><span className="live-dot" /> Pembaruan otomatis</span></div>
+      <div className="account-list">
+        {loading ? <p className="account-empty">Memuat daftar akun...</p> : loadError ? <p className="account-empty">Status online belum dapat dimuat.</p> : accounts.length ? accounts.map((account) => (
+          <div className="account-entry" key={account.id}>
+            <div className="account-entry-main">
+              <span className={`account-status${account.online ? " online" : ""}`} />
+              <div><b>{account.id}</b><span className={`account-presence${account.online ? " online" : ""}`}>{account.online ? "Online sekarang" : "Offline"}</span></div>
+              <small>{account.online ? "Aktif" : account.lastSeenAt ? `Terakhir aktif ${new Intl.DateTimeFormat("id-ID", { dateStyle: "medium", timeStyle: "short" }).format(new Date(account.lastSeenAt))}` : "Belum pernah masuk"}</small>
+            </div>
+            <div className="account-actions">
+              <button type="button" className="rule-edit-button" onClick={() => { setResetTarget(resetTarget === account.id ? "" : account.id); setResetPassword(""); setError(""); }}><LockKeyhole size={13} /> Atur sandi</button>
+              <button type="button" className="rule-delete-button" aria-label={`Hapus akun ${account.id}`} onClick={() => deleteAccount(account.id)}><Trash2 size={13} /></button>
+            </div>
+            {resetTarget === account.id && <form className="account-reset-form" onSubmit={changePassword}>
+              <label htmlFor={`reset-${account.id}`}>Kata sandi baru</label>
+              <input id={`reset-${account.id}`} className="text-input" type="password" value={resetPassword} onChange={(event) => setResetPassword(event.target.value)} placeholder="Minimal 8 karakter" required minLength={8} maxLength={128} autoComplete="new-password" />
+              <button className="primary-action" type="submit" disabled={saving}><Check size={14} /> Simpan</button>
+            </form>}
+          </div>
+        )) : <p className="account-empty">Belum ada akun pegawai. Buat akun pertama untuk tim.</p>}
+      </div>
+      <div className="account-admin-footer"><span><ShieldCheck size={14} /> Akun yang dihapus langsung kehilangan akses ke API.</span></div>
+    </section>
   );
 }
 

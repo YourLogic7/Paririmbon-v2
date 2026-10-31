@@ -35,6 +35,15 @@ const badTicketConfigSchema = new mongoose.Schema({
 export const BadTicketConfig = mongoose.models.BadTicketConfig ||
   mongoose.model("BadTicketConfig", badTicketConfigSchema);
 
+const accountSchema = new mongoose.Schema({
+  username: { type: String, required: true, unique: true, trim: true, lowercase: true, minlength: 3, maxlength: 32 },
+  passwordHash: { type: String, required: true, select: false },
+  sessionVersion: { type: Number, default: 0 },
+  lastSeenAt: { type: Date, default: null }
+}, { timestamps: true });
+
+export const Account = mongoose.models.Account || mongoose.model("Account", accountSchema);
+
 let connectionPromise;
 
 export async function connectDatabase() {

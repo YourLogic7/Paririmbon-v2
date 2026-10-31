@@ -1,6 +1,7 @@
 import express from "express";
-import { createToken, requireAdmin } from "./auth.js";
-import { connectDatabase, Entry, BadTicketConfig } from "./db.js";
+import { timingSafeEqual } from "node:crypto";
+import { createToken, hashPassword, requireAdmin, requireAuth, verifyPassword } from "./auth.js";
+import { connectDatabase, Entry, BadTicketConfig, Account } from "./db.js";
 import {
   detailedCaseCustomerCase,
   allIssueTypes,
@@ -92,20 +93,140 @@ function validateBadTicketConfig(body) {
 
 app.get("/api/health", (_request, response) => response.json({ status: "ok", service: "paririmbon-api" }));
 
-app.post("/api/auth/login", (request, response) => {
+app.post("/api/auth/login", async (request, response, next) => {
   const configuredPassword = process.env.ADMIN_PASSWORD;
-  if (!configuredPassword) return response.status(503).json({ error: "ADMIN_PASSWORD belum dikonfigurasi." });
-  if (typeof request.body?.password !== "string" || request.body.password !== configuredPassword) {
-    return response.status(401).json({ error: "Kata sandi admin tidak sesuai." });
+  const { accountId, password } = request.body || {};
+  if (typeof password !== "string" || password.length > 128) {
+    return response.status(400).json({ error: "Kata sandi harus diisi." });
   }
   try {
-    return response.json({ token: createToken(), expiresIn: 28800 });
+    if (accountId === undefined || accountId === "") {
+      if (!configuredPassword) return response.status(503).json({ error: "ADMIN_PASSWORD belum dikonfigurasi." });
+      const submittedPassword = Buffer.from(password);
+      const expectedPassword = Buffer.from(configuredPassword);
+      if (submittedPassword.length !== expectedPassword.length ||
+        !timingSafeEqual(submittedPassword, expectedPassword)) {
+        return response.status(401).json({ error: "Kata sandi admin tidak sesuai." });
+      }
+      return response.json({ token: createToken("admin"), role: "admin", expiresIn: 28800 });
+    }
+    if (typeof accountId !== "string" || accountId.length > 32) {
+      return response.status(400).json({ error: "ID akun tidak valid." });
+    }
+    await connectDatabase();
+    const account = await Account.findOne({ username: accountId.trim().toLowerCase() }).select("+passwordHash");
+    if (!account || !await verifyPassword(password, account.passwordHash)) {
+      return response.status(401).json({ error: "ID atau kata sandi tidak sesuai." });
+    }
+    account.lastSeenAt = new Date();
+    await account.save();
+    return response.json({ token: createToken("user", account.id, account.sessionVersion), role: "user", expiresIn: 28800 });
   } catch (error) {
-    return response.status(503).json({ error: error.message });
+    if (error.message.includes("JWT_SECRET")) return response.status(503).json({ error: error.message });
+    return next(error);
   }
 });
 
-app.get("/api/entries", async (_request, response, next) => {
+app.get("/api/auth/me", requireAuth, async (request, response, next) => {
+  try {
+    if (request.auth.role === "user") {
+      await Account.findByIdAndUpdate(request.auth.sub, { lastSeenAt: new Date() });
+    }
+    return response.json({ role: request.auth.role });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+app.post("/api/auth/presence", requireAuth, async (request, response, next) => {
+  try {
+    if (request.auth.role === "user") {
+      await Account.findByIdAndUpdate(request.auth.sub, { lastSeenAt: new Date() });
+    }
+    return response.sendStatus(204);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+app.post("/api/auth/logout", requireAuth, async (request, response, next) => {
+  try {
+    if (request.auth.role === "user") {
+      await Account.findByIdAndUpdate(request.auth.sub, { lastSeenAt: null });
+    }
+    return response.sendStatus(204);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+app.get("/api/admin/accounts", requireAdmin, async (_request, response, next) => {
+  try {
+    await connectDatabase();
+    const accounts = await Account.find().select("username lastSeenAt").sort({ username: 1 }).lean();
+    const onlineSince = new Date(Date.now() - 45_000);
+    return response.json({
+      accounts: accounts.map((account) => ({
+        id: account.username,
+        online: account.lastSeenAt !== null && account.lastSeenAt >= onlineSince,
+        lastSeenAt: account.lastSeenAt
+      }))
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+app.post("/api/admin/accounts", requireAdmin, async (request, response, next) => {
+  const { id, password } = request.body || {};
+  if (typeof id !== "string" || !/^[a-zA-Z0-9._-]{3,32}$/.test(id) ||
+    typeof password !== "string" || password.length < 8 || password.length > 128) {
+    return response.status(400).json({ error: "ID harus 3–32 karakter (huruf, angka, titik, garis bawah, atau strip) dan kata sandi 8–128 karakter." });
+  }
+  try {
+    await connectDatabase();
+    const account = await Account.create({
+      username: id.toLowerCase(),
+      passwordHash: await hashPassword(password)
+    });
+    return response.status(201).json({ account: { id: account.username, online: false, lastSeenAt: null } });
+  } catch (error) {
+    if (error.code === 11000) return response.status(409).json({ error: "ID akun sudah digunakan." });
+    return next(error);
+  }
+});
+
+app.put("/api/admin/accounts/:id/password", requireAdmin, async (request, response, next) => {
+  const { password } = request.body || {};
+  if (typeof password !== "string" || password.length < 8 || password.length > 128) {
+    return response.status(400).json({ error: "Kata sandi harus terdiri dari 8–128 karakter." });
+  }
+  try {
+    await connectDatabase();
+    const account = await Account.findOne({ username: request.params.id.toLowerCase() });
+    if (!account) return response.status(404).json({ error: "Akun tidak ditemukan." });
+    account.passwordHash = await hashPassword(password);
+    account.sessionVersion += 1;
+    account.lastSeenAt = null;
+    await account.save();
+    return response.json({ updated: true });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+app.delete("/api/admin/accounts/:id", requireAdmin, async (request, response, next) => {
+  try {
+    await connectDatabase();
+    const account = await Account.findOneAndDelete({ username: request.params.id.toLowerCase() });
+    if (!account) return response.status(404).json({ error: "Akun tidak ditemukan." });
+    return response.json({ deleted: true });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+app.get("/api/entries", requireAuth, async (_request, response, next) => {
   try {
     await connectDatabase();
     if (await Entry.estimatedDocumentCount() === 0) {
@@ -122,7 +243,7 @@ app.get("/api/entries", async (_request, response, next) => {
   }
 });
 
-app.get("/api/bad-ticket-config", async (_request, response, next) => {
+app.get("/api/bad-ticket-config", requireAuth, async (_request, response, next) => {
   try {
     await connectDatabase();
     let config = await BadTicketConfig.findOne({ key: "default" }).select("-_id -__v -key").lean();
@@ -231,7 +352,7 @@ app.delete("/api/entries/:id", requireAdmin, async (request, response, next) => 
   }
 });
 
-app.post("/api/assist", async (request, response, next) => {
+app.post("/api/assist", requireAuth, async (request, response, next) => {
   const { caseType, conditions = [] } = request.body || {};
   if (typeof caseType !== "string" || caseType.length > 100 || !Array.isArray(conditions) || conditions.length > 12) {
     return response.status(400).json({ error: "Situasi atau konteks kasus tidak valid." });

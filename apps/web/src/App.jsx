@@ -62,6 +62,12 @@ function readSavedTheme() {
 
 function readSavedSession() {
   try {
+    const saved = localStorage.getItem(SESSION_STORAGE_KEY);
+    if (saved) return saved;
+  } catch {
+    // Fall back to the current tab when persistent storage is unavailable.
+  }
+  try {
     return sessionStorage.getItem(SESSION_STORAGE_KEY) || "";
   } catch {
     return "";
@@ -69,6 +75,12 @@ function readSavedSession() {
 }
 
 function readLastActivity() {
+  try {
+    const saved = Number(localStorage.getItem(LAST_ACTIVITY_STORAGE_KEY));
+    if (Number.isFinite(saved) && saved > 0) return saved;
+  } catch {
+    // Fall back to the current tab when persistent storage is unavailable.
+  }
   try {
     const saved = Number(sessionStorage.getItem(LAST_ACTIVITY_STORAGE_KEY));
     return Number.isFinite(saved) ? saved : 0;
@@ -79,10 +91,30 @@ function readLastActivity() {
 
 function clearSavedSession() {
   try {
+    localStorage.removeItem(SESSION_STORAGE_KEY);
+    localStorage.removeItem(LAST_ACTIVITY_STORAGE_KEY);
+  } catch {
+    // Persistent storage can be unavailable in restricted browser contexts.
+  }
+  try {
     sessionStorage.removeItem(SESSION_STORAGE_KEY);
     sessionStorage.removeItem(LAST_ACTIVITY_STORAGE_KEY);
   } catch {
     // Session storage can be unavailable in restricted browser contexts.
+  }
+}
+
+function saveSessionValue(key, value) {
+  try {
+    localStorage.setItem(key, value);
+    return;
+  } catch {
+    // Fall back to the current tab when persistent storage is unavailable.
+  }
+  try {
+    sessionStorage.setItem(key, value);
+  } catch {
+    // Storage can be unavailable in restricted browser contexts.
   }
 }
 
@@ -353,7 +385,10 @@ function App() {
     lastActivityRef.current = lastActivity;
     fetch(`${API}/api/auth/me`, { headers: { Authorization: `Bearer ${savedToken}` } })
       .then(async (response) => {
-        if (!response.ok) throw new Error("Sesi tidak valid.");
+        if (!response.ok) {
+          if (response.status === 401) clearSavedSession();
+          throw new Error("Sesi tidak valid.");
+        }
         return response.json();
       })
       .then((data) => {
@@ -363,7 +398,7 @@ function App() {
         setAdmin(data.role === "admin");
       })
       .catch(() => {
-        clearSavedSession();
+        if (!cancelled) setToken("");
       })
       .finally(() => {
         if (!cancelled) setSessionChecking(false);
@@ -432,7 +467,7 @@ function App() {
       lastActivityRef.current = now;
       if (now - previousActivity < 1000) return;
       try {
-        sessionStorage.setItem(LAST_ACTIVITY_STORAGE_KEY, String(now));
+        saveSessionValue(LAST_ACTIVITY_STORAGE_KEY, String(now));
       } catch {
         // Session storage can be unavailable in restricted browser contexts.
       }
@@ -457,7 +492,7 @@ function App() {
         if (!response.ok) throw new Error(await getResponseError(response, "Gagal memperbarui sesi"));
         const session = await response.json();
         tokenRef.current = session.token;
-        sessionStorage.setItem(SESSION_STORAGE_KEY, session.token);
+        saveSessionValue(SESSION_STORAGE_KEY, session.token);
         setToken(session.token);
       } catch {
         lastPresenceAt = 0;
@@ -508,8 +543,8 @@ function App() {
     const now = Date.now();
     tokenRef.current = session.token;
     lastActivityRef.current = now;
-    sessionStorage.setItem(LAST_ACTIVITY_STORAGE_KEY, String(now));
-    sessionStorage.setItem(SESSION_STORAGE_KEY, session.token);
+    saveSessionValue(LAST_ACTIVITY_STORAGE_KEY, String(now));
+    saveSessionValue(SESSION_STORAGE_KEY, session.token);
     setToken(session.token);
     setAdmin(session.role === "admin");
     setSessionChecking(false);
@@ -793,7 +828,7 @@ function LoginScreen({ theme, onAuthenticated }) {
       });
       if (!response.ok) throw new Error(await getResponseError(response, "Gagal masuk"));
       const session = await response.json();
-      sessionStorage.setItem(SESSION_STORAGE_KEY, session.token);
+      saveSessionValue(SESSION_STORAGE_KEY, session.token);
       onAuthenticated(session);
     } catch (requestError) {
       setError(requestError.message || "Layanan login tidak tersedia. Periksa koneksi lalu coba lagi.");

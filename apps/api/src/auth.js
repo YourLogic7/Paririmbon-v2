@@ -3,6 +3,8 @@ import { promisify } from "node:util";
 import { connectDatabase, Account } from "./db.js";
 
 const scrypt = promisify(scryptCallback);
+export const SESSION_IDLE_TIMEOUT_MS = 3 * 60 * 60 * 1000;
+export const SESSION_IDLE_TIMEOUT_SECONDS = SESSION_IDLE_TIMEOUT_MS / 1000;
 
 function sign(value) {
   return createHmac("sha256", process.env.JWT_SECRET).update(value).digest("base64url");
@@ -20,7 +22,7 @@ export function createToken(role, subject, sessionVersion) {
     role,
     ...(subject ? { sub: subject } : {}),
     ...(sessionVersion !== undefined ? { version: sessionVersion } : {}),
-    exp: Date.now() + 8 * 60 * 60 * 1000
+    exp: Date.now() + SESSION_IDLE_TIMEOUT_MS
   })).toString("base64url");
   return `${payload}.${sign(payload)}`;
 }
@@ -78,8 +80,9 @@ export async function requireAuth(request, response, next) {
   if (decoded.role === "user") {
     try {
       await connectDatabase();
-      const account = await Account.findById(decoded.sub).select("sessionVersion").lean();
-      if (!account || account.sessionVersion !== decoded.version) {
+      const account = await Account.findById(decoded.sub).select("sessionVersion lastSeenAt").lean();
+      if (!account || account.sessionVersion !== decoded.version ||
+        !account.lastSeenAt || Date.now() - account.lastSeenAt.getTime() >= SESSION_IDLE_TIMEOUT_MS) {
         return response.status(401).json({ error: "Akun tidak lagi tersedia." });
       }
     } catch (error) {

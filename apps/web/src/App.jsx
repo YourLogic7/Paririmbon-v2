@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   ArrowDownRight, ArrowRight, BookOpen, BookPlus, Check,
   ChevronDown, ChevronLeft, ChevronRight, CircleHelp, Clock3, Feather,
@@ -23,6 +23,10 @@ const STORAGE_KEY = "paririmbon.entries.v1";
 const BAD_TICKET_STORAGE_KEY = "paririmbon.bad-ticket-config.v1";
 const THEME_STORAGE_KEY = "paririmbon.theme";
 const SESSION_STORAGE_KEY = "paririmbon.session.v1";
+const LAST_ACTIVITY_STORAGE_KEY = "paririmbon.session.lastActivity";
+const SESSION_IDLE_TIMEOUT_MS = 3 * 60 * 60 * 1000;
+const ACTIVE_WINDOW_MS = 30_000;
+const PRESENCE_INTERVAL_MS = 15_000;
 const API = import.meta.env.VITE_API_URL || "";
 const MAX_IMPORT_ROWS = 200;
 const BAD_TICKET_HASHTAGS = [
@@ -61,6 +65,24 @@ function readSavedSession() {
     return sessionStorage.getItem(SESSION_STORAGE_KEY) || "";
   } catch {
     return "";
+  }
+}
+
+function readLastActivity() {
+  try {
+    const saved = Number(sessionStorage.getItem(LAST_ACTIVITY_STORAGE_KEY));
+    return Number.isFinite(saved) ? saved : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function clearSavedSession() {
+  try {
+    sessionStorage.removeItem(SESSION_STORAGE_KEY);
+    sessionStorage.removeItem(LAST_ACTIVITY_STORAGE_KEY);
+  } catch {
+    // Session storage can be unavailable in restricted browser contexts.
   }
 }
 
@@ -309,6 +331,8 @@ function App() {
   const [ticketResult, setTicketResult] = useState(null);
   const [admin, setAdmin] = useState(false);
   const [token, setToken] = useState("");
+  const tokenRef = useRef("");
+  const lastActivityRef = useRef(0);
   const [sessionChecking, setSessionChecking] = useState(true);
   const [editing, setEditing] = useState(undefined);
   const [toast, setToast] = useState("");
@@ -320,6 +344,13 @@ function App() {
       setSessionChecking(false);
       return undefined;
     }
+    const lastActivity = readLastActivity();
+    if (!lastActivity || Date.now() - lastActivity >= SESSION_IDLE_TIMEOUT_MS) {
+      clearSavedSession();
+      setSessionChecking(false);
+      return undefined;
+    }
+    lastActivityRef.current = lastActivity;
     fetch(`${API}/api/auth/me`, { headers: { Authorization: `Bearer ${savedToken}` } })
       .then(async (response) => {
         if (!response.ok) throw new Error("Sesi tidak valid.");
@@ -327,15 +358,12 @@ function App() {
       })
       .then((data) => {
         if (cancelled) return;
+        tokenRef.current = savedToken;
         setToken(savedToken);
         setAdmin(data.role === "admin");
       })
       .catch(() => {
-        try {
-          sessionStorage.removeItem(SESSION_STORAGE_KEY);
-        } catch {
-          // Session storage can be unavailable in restricted browser contexts.
-        }
+        clearSavedSession();
       })
       .finally(() => {
         if (!cancelled) setSessionChecking(false);
@@ -385,30 +413,65 @@ function App() {
 
   useEffect(() => {
     if (!token) return undefined;
+    let lastPresenceAt = 0;
+    const expireSession = () => {
+      clearSavedSession();
+      tokenRef.current = "";
+      setToken("");
+      setAdmin(false);
+      setAccountsAdminOpen(false);
+      setBadTicketAdminOpen(false);
+    };
+    const markActivity = () => {
+      const now = Date.now();
+      if (!lastActivityRef.current || now - lastActivityRef.current >= SESSION_IDLE_TIMEOUT_MS) {
+        expireSession();
+        return;
+      }
+      const previousActivity = lastActivityRef.current;
+      lastActivityRef.current = now;
+      if (now - previousActivity < 1000) return;
+      try {
+        sessionStorage.setItem(LAST_ACTIVITY_STORAGE_KEY, String(now));
+      } catch {
+        // Session storage can be unavailable in restricted browser contexts.
+      }
+    };
     async function updatePresence() {
+      const now = Date.now();
+      if (!lastActivityRef.current || now - lastActivityRef.current >= SESSION_IDLE_TIMEOUT_MS) {
+        expireSession();
+        return;
+      }
+      if (now - lastActivityRef.current > ACTIVE_WINDOW_MS || now - lastPresenceAt < PRESENCE_INTERVAL_MS) return;
+      lastPresenceAt = now;
       try {
         const response = await fetch(`${API}/api/auth/presence`, {
           method: "POST",
-          headers: { Authorization: `Bearer ${token}` }
+          headers: { Authorization: `Bearer ${tokenRef.current}` }
         });
         if (response.status === 401) {
-          try {
-            sessionStorage.removeItem(SESSION_STORAGE_KEY);
-          } catch {
-            // Session storage can be unavailable in restricted browser contexts.
-          }
-          setToken("");
-          setAdmin(false);
-          setAccountsAdminOpen(false);
+          expireSession();
+          return;
         }
+        if (!response.ok) throw new Error(await getResponseError(response, "Gagal memperbarui sesi"));
+        const session = await response.json();
+        tokenRef.current = session.token;
+        sessionStorage.setItem(SESSION_STORAGE_KEY, session.token);
+        setToken(session.token);
       } catch {
-        // A temporary network error should not end an otherwise valid session.
+        lastPresenceAt = 0;
       }
     }
+    const activityEvents = ["pointerdown", "pointermove", "keydown", "scroll", "touchstart"];
+    activityEvents.forEach((eventName) => window.addEventListener(eventName, markActivity, { passive: true }));
+    const timer = window.setInterval(updatePresence, PRESENCE_INTERVAL_MS);
     updatePresence();
-    const timer = window.setInterval(updatePresence, 15_000);
-    return () => window.clearInterval(timer);
-  }, [token]);
+    return () => {
+      window.clearInterval(timer);
+      activityEvents.forEach((eventName) => window.removeEventListener(eventName, markActivity));
+    };
+  }, [Boolean(token)]);
 
   useEffect(() => {
     if (!toast) return undefined;
@@ -423,20 +486,17 @@ function App() {
   const activeIndex = entries.findIndex((entry) => entry.id === activeId);
 
   function logout() {
-    if (token) {
+    if (tokenRef.current) {
       fetch(`${API}/api/auth/logout`, {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { Authorization: `Bearer ${tokenRef.current}` },
         keepalive: true
       }).then((response) => {
         if (!response.ok && response.status !== 401) console.warn("Paririmbon logout presence update failed:", response.status);
       }).catch((error) => console.warn("Paririmbon logout presence update failed:", error.message));
     }
-    try {
-      sessionStorage.removeItem(SESSION_STORAGE_KEY);
-    } catch {
-      // Session storage can be unavailable in restricted browser contexts.
-    }
+    clearSavedSession();
+    tokenRef.current = "";
     setToken("");
     setAdmin(false);
     setAccountsAdminOpen(false);
@@ -445,6 +505,11 @@ function App() {
   }
 
   function acceptSession(session) {
+    const now = Date.now();
+    tokenRef.current = session.token;
+    lastActivityRef.current = now;
+    sessionStorage.setItem(LAST_ACTIVITY_STORAGE_KEY, String(now));
+    sessionStorage.setItem(SESSION_STORAGE_KEY, session.token);
     setToken(session.token);
     setAdmin(session.role === "admin");
     setSessionChecking(false);
@@ -773,7 +838,7 @@ function LoginScreen({ theme, onAuthenticated }) {
               <LogIn size={16} /> {submitting ? "Memeriksa..." : "Masuk"}
             </button>
           </form>
-          <div className="login-footer"><ShieldCheck size={13} /> Sesi login aman dan akan berakhir setelah 8 jam.</div>
+          <div className="login-footer"><ShieldCheck size={13} /> Sesi berakhir setelah 3 jam tanpa aktivitas.</div>
         </div>
         <div className="login-decoration"><span>✳</span><p>Pengetahuan terbaik<br />adalah yang dibagikan.</p></div>
       </main>

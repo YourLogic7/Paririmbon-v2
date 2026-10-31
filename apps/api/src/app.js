@@ -1,6 +1,13 @@
 import express from "express";
 import { timingSafeEqual } from "node:crypto";
-import { createToken, hashPassword, requireAdmin, requireAuth, verifyPassword } from "./auth.js";
+import {
+  createToken,
+  hashPassword,
+  requireAdmin,
+  requireAuth,
+  SESSION_IDLE_TIMEOUT_SECONDS,
+  verifyPassword
+} from "./auth.js";
 import { connectDatabase, Entry, BadTicketConfig, Account } from "./db.js";
 import {
   detailedCaseCustomerCase,
@@ -108,7 +115,11 @@ app.post("/api/auth/login", async (request, response, next) => {
         !timingSafeEqual(submittedPassword, expectedPassword)) {
         return response.status(401).json({ error: "Kata sandi admin tidak sesuai." });
       }
-      return response.json({ token: createToken("admin"), role: "admin", expiresIn: 28800 });
+      return response.json({
+        token: createToken("admin"),
+        role: "admin",
+        expiresIn: SESSION_IDLE_TIMEOUT_SECONDS
+      });
     }
     if (typeof accountId !== "string" || accountId.length > 32) {
       return response.status(400).json({ error: "ID akun tidak valid." });
@@ -120,22 +131,19 @@ app.post("/api/auth/login", async (request, response, next) => {
     }
     account.lastSeenAt = new Date();
     await account.save();
-    return response.json({ token: createToken("user", account.id, account.sessionVersion), role: "user", expiresIn: 28800 });
+    return response.json({
+      token: createToken("user", account.id, account.sessionVersion),
+      role: "user",
+      expiresIn: SESSION_IDLE_TIMEOUT_SECONDS
+    });
   } catch (error) {
     if (error.message.includes("JWT_SECRET")) return response.status(503).json({ error: error.message });
     return next(error);
   }
 });
 
-app.get("/api/auth/me", requireAuth, async (request, response, next) => {
-  try {
-    if (request.auth.role === "user") {
-      await Account.findByIdAndUpdate(request.auth.sub, { lastSeenAt: new Date() });
-    }
-    return response.json({ role: request.auth.role });
-  } catch (error) {
-    return next(error);
-  }
+app.get("/api/auth/me", requireAuth, (request, response) => {
+  return response.json({ role: request.auth.role });
 });
 
 app.post("/api/auth/presence", requireAuth, async (request, response, next) => {
@@ -143,7 +151,14 @@ app.post("/api/auth/presence", requireAuth, async (request, response, next) => {
     if (request.auth.role === "user") {
       await Account.findByIdAndUpdate(request.auth.sub, { lastSeenAt: new Date() });
     }
-    return response.sendStatus(204);
+    return response.json({
+      token: createToken(
+        request.auth.role,
+        request.auth.sub,
+        request.auth.version
+      ),
+      expiresIn: SESSION_IDLE_TIMEOUT_SECONDS
+    });
   } catch (error) {
     return next(error);
   }

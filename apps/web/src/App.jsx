@@ -444,7 +444,7 @@ function App() {
       })
       .catch((error) => { if (!cancelled) setToast(error.message); });
     return () => { cancelled = true; };
-  }, [token]);
+  }, [Boolean(token)]);
 
   useEffect(() => {
     if (!token) return undefined;
